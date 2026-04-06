@@ -25,7 +25,7 @@
         <lombok.version>1.18.34</lombok.version>
         <testcontainers.version>1.20.0</testcontainers.version>
         <springdoc.version>2.6.0</springdoc.version>
-        <africastalking.version>3.4.7</africastalking.version>
+        <africastalking.version>3.4.11</africastalking.version>
         <firebase.version>9.3.0</firebase.version>
         <minio.version>8.5.11</minio.version>
         <google-maps.version>2.2.0</google-maps.version>
@@ -139,8 +139,8 @@
 
         <!-- External Integrations -->
         <dependency>
-            <groupId>com.africastalking</groupId>
-            <artifactId>africastalking</artifactId>
+            <groupId>com.github.AfricasTalkingLtd.africastalking-java</groupId>
+            <artifactId>core</artifactId>
             <version>${africastalking.version}</version>
         </dependency>
         <dependency>
@@ -186,6 +186,13 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+
+    <repositories>
+        <repository>
+            <id>jitpack.io</id>
+            <url>https://jitpack.io</url>
+        </repository>
+    </repositories>
 
     <build>
         <plugins>
