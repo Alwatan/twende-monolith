@@ -8,6 +8,8 @@ on:
 
 permissions:
   contents: read
+  actions: read
+  security-events: write
   pull-requests: write
 
 env:
@@ -67,34 +69,50 @@ jobs:
           ignore-unfixed: true
           format: table
 
+      - name: Trivy filesystem scan (SARIF)
+        uses: aquasecurity/trivy-action@v0.35.0
+        if: always()
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-fs-results.sarif
 
-  # ──────────────────────────────────────────────
-  # SAST (CodeQL) — requires GitHub Advanced Security
-  # Uncomment when the repo is public or Advanced Security is enabled
-  # ──────────────────────────────────────────────
-  # sast:
-  #   name: Static Analysis (CodeQL)
-  #   runs-on: ubuntu-latest
-  #   permissions:
-  #     security-events: write
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - name: Initialize CodeQL
-  #       uses: github/codeql-action/init@v3
-  #       with:
-  #         languages: java-kotlin
-  #     - name: Set up JDK
-  #       uses: actions/setup-java@v4
-  #       with:
-  #         java-version: ${{ env.JAVA_VERSION }}
-  #         distribution: ${{ env.JAVA_DISTRIBUTION }}
-  #         cache: maven
-  #     - name: Build for CodeQL
-  #       run: ./mvnw compile --no-transfer-progress -DskipTests
-  #     - name: Perform CodeQL Analysis
-  #       uses: github/codeql-action/analyze@v3
-  #       with:
-  #         category: /language:java-kotlin
+      - name: Upload Trivy SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-fs-results.sarif
+          category: trivy-dependency-scan
+
+  sast:
+    name: Static Analysis (CodeQL)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: java-kotlin
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          cache: maven
+
+      - name: Build for CodeQL
+        run: ./mvnw compile --no-transfer-progress -DskipTests
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:java-kotlin
 
   # ──────────────────────────────────────────────
   # Stage 3: Test + Coverage (gate: 80%)
@@ -228,13 +246,31 @@ jobs:
           ignore-unfixed: true
           format: table
 
+      - name: Trivy container scan (SARIF)
+        uses: aquasecurity/trivy-action@v0.35.0
+        if: always()
+        with:
+          scan-type: image
+          image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-image-results.sarif
+
+      - name: Upload Trivy image SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-image-results.sarif
+          category: trivy-container-scan
 
   # ──────────────────────────────────────────────
   # Stage 6: Publish container image (main only)
   # ──────────────────────────────────────────────
   publish:
     name: Publish Container Image
-    needs: [container, security-scan]
+    needs: [container, security-scan, sast]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     permissions:
