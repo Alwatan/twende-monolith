@@ -66,12 +66,17 @@ Java service calls and Spring `ApplicationEventPublisher` (no Kafka for internal
 | Africa's Talking REST API | (via Spring RestClient) | SMS — no SDK, direct HTTP calls |
 | Firebase Admin SDK | 9.4.2 | Push notifications (FCM) |
 | MinIO SDK | 8.6.0 | File storage (driver docs) |
-| Google Maps Services | 2.2.0 | Distance + routing |
+| Google Maps REST API | (via Spring RestClient) | Geocoding, routing, ETA, autocomplete — no SDK |
+| PostGIS | (PostgreSQL extension) | Spatial queries, zone polygon boundaries |
 | ULID Creator | 5.2.3 | Time-sortable unique IDs |
 | SendGrid | 4.10.2 | Email |
 
 **No Spring Cloud.** No Eureka. No Config Server. No Spring Cloud Gateway.
 These are microservices concerns. Not needed here.
+
+**No third-party mapping SDKs.** Google Maps, OSRM, and Nominatim are called via Spring
+`RestClient` directly — same pattern as Africa's Talking. The `google-maps-services` SDK
+must not be in `pom.xml`.
 
 ---
 
@@ -164,8 +169,34 @@ com.twende
     │   ├── service/DocumentService.java
     │   └── controller/DriverController.java
     ├── location/
+    │   ├── entity/Zone.java
+    │   ├── entity/GeocodeCache.java
+    │   ├── repository/ZoneRepository.java
+    │   ├── repository/GeocodeCacheRepository.java
     │   ├── service/LocationService.java
-    │   ├── service/EtaService.java
+    │   ├── service/GeocodingService.java
+    │   ├── service/RoutingService.java
+    │   ├── service/AutocompleteService.java
+    │   ├── service/GeofenceService.java
+    │   ├── service/ZoneService.java
+    │   ├── provider/GeocodingProvider.java         # Interface
+    │   ├── provider/RoutingProvider.java            # Interface
+    │   ├── provider/AutocompleteProvider.java       # Interface
+    │   ├── provider/ProviderFactory.java            # Resolves provider per city config
+    │   ├── provider/google/GoogleGeocodingProvider.java
+    │   ├── provider/google/GoogleRoutingProvider.java
+    │   ├── provider/google/GoogleAutocompleteProvider.java
+    │   ├── provider/google/GoogleMapsClient.java    # RestClient for Google Maps REST APIs
+    │   ├── provider/osrm/OsrmRoutingProvider.java   # Stub — Phase 2
+    │   ├── provider/osrm/OsrmClient.java            # Stub — Phase 2
+    │   ├── provider/nominatim/NominatimGeocodingProvider.java  # Stub — Phase 3
+    │   ├── provider/nominatim/NominatimClient.java  # Stub — Phase 3
+    │   ├── controller/GeocodingController.java
+    │   ├── controller/RoutingController.java
+    │   ├── controller/ZoneController.java
+    │   ├── config/GoogleMapsProperties.java         # @ConfigurationProperties
+    │   ├── config/OsrmProperties.java
+    │   ├── config/NominatimProperties.java
     │   ├── websocket/LocationWebSocketHandler.java
     │   ├── websocket/WebSocketSessionRegistry.java
     │   └── dto/...
@@ -456,6 +487,7 @@ V13__loyalty_schema.sql
 V14__seed_tanzania.sql
 V15__seed_notification_templates.sql
 V16__seed_loyalty_rules.sql
+V17__location_zones_and_geocache.sql
 ```
 
 ### Column conventions
@@ -528,7 +560,11 @@ types, pricing, payment methods, regulatory requirements, feature flags.
 **Key entities:**
 - `CountryConfig(code CHAR(2) PK, name, status, defaultLocale, currencyCode, currencySymbol, minorUnits, phonePrefix, cashEnabled, subscriptionAggregator, regulatoryAuthority, tripReportingRequired, features JSONB)`
 - `VehicleTypeConfig(id UUID, countryCode, vehicleType, displayName, maxPassengers, baseFare NUMERIC(12,2), perKm NUMERIC(12,2), perMinute NUMERIC(12,2), minimumFare NUMERIC(12,2), cancellationFee NUMERIC(12,2), surgeMultiplierCap NUMERIC(4,2), isActive BOOLEAN)`
-- `OperatingCity(id UUID, countryCode, cityId, name, timezone, status, centerLat, centerLng, radiusKm)`
+- `OperatingCity(id UUID, countryCode, cityId, name, timezone, status, centerLat, centerLng, radiusKm, geocodingProvider VARCHAR(30) DEFAULT 'GOOGLE', routingProvider VARCHAR(30) DEFAULT 'GOOGLE', autocompleteProvider VARCHAR(30) DEFAULT 'GOOGLE')`
+
+Provider columns control which mapping provider is used per city. Valid values: `GOOGLE`,
+`OSRM` (routing only), `NOMINATIM` (geocoding only). The location module's `ProviderFactory`
+reads these to resolve the correct implementation — enables gradual per-city migration.
 
 **Caching:** Cache country config in Redis with 5-minute TTL.
 ```java
@@ -606,7 +642,156 @@ public void goOnline(UUID driverId) {
 ### Module: location
 
 **Purpose:** Real-time driver location via WebSocket. Redis GEO for nearby-driver queries.
+Geocoding, reverse geocoding, place autocomplete, and routing via provider abstraction.
+Geofence zone management (OPERATING, SURGE, AIRPORT, RESTRICTED, PICKUP_ONLY).
 Stores completed trip traces in PostgreSQL.
+
+**Key entities:**
+- `Zone(id UUID, countryCode, cityId UUID, name, boundary GEOGRAPHY(POLYGON,4326), type VARCHAR(20), config JSONB, isActive BOOLEAN)`
+  — Zone types: `OPERATING` (service boundary), `SURGE` (surge pricing area), `AIRPORT` (surcharge + pickup instructions), `RESTRICTED` (no service), `PICKUP_ONLY` (pickup allowed, no dropoff)
+  — Config examples: SURGE `{"multiplier": 1.5}`, AIRPORT `{"surcharge": 2000, "pickupInstructions": "Terminal 2 parking"}`, RESTRICTED `{"reason": "Government restricted area"}`
+- `GeocodeCache(id UUID, countryCode, queryHash VARCHAR(64) UNIQUE, query TEXT, latitude NUMERIC(10,7), longitude NUMERIC(10,7), address TEXT, provider VARCHAR(30), hitCount INT, expiresAt TIMESTAMPTZ)`
+
+**V17 migration (PostGIS):**
+```sql
+CREATE EXTENSION IF NOT EXISTS postgis;
+
+CREATE TABLE zones (
+    id            UUID PRIMARY KEY,
+    country_code  CHAR(2) NOT NULL,
+    city_id       UUID NOT NULL REFERENCES operating_cities(id),
+    name          VARCHAR(100) NOT NULL,
+    boundary      GEOGRAPHY(POLYGON, 4326) NOT NULL,
+    type          VARCHAR(20) NOT NULL,
+    config        JSONB DEFAULT '{}',
+    is_active     BOOLEAN DEFAULT TRUE,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_zones_city_type ON zones(city_id, type);
+CREATE INDEX idx_zones_boundary ON zones USING GIST(boundary);
+
+CREATE TABLE geocode_cache (
+    id            UUID PRIMARY KEY,
+    country_code  CHAR(2) NOT NULL,
+    query_hash    VARCHAR(64) UNIQUE NOT NULL,
+    query         TEXT NOT NULL,
+    latitude      NUMERIC(10,7) NOT NULL,
+    longitude     NUMERIC(10,7) NOT NULL,
+    address       TEXT,
+    provider      VARCHAR(30),
+    hit_count     INTEGER DEFAULT 1,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at    TIMESTAMPTZ
+);
+CREATE INDEX idx_geocache_hash ON geocode_cache(query_hash);
+
+ALTER TABLE operating_cities ADD COLUMN geocoding_provider VARCHAR(30) NOT NULL DEFAULT 'GOOGLE';
+ALTER TABLE operating_cities ADD COLUMN routing_provider VARCHAR(30) NOT NULL DEFAULT 'GOOGLE';
+ALTER TABLE operating_cities ADD COLUMN autocomplete_provider VARCHAR(30) NOT NULL DEFAULT 'GOOGLE';
+```
+
+**Provider abstraction (same pattern as PaymentProvider):**
+```java
+public interface GeocodingProvider {
+    String getId();  // "google", "nominatim"
+    GeocodingResult geocode(String address, LatLng bias);
+    GeocodingResult reverseGeocode(LatLng point);
+}
+
+public interface RoutingProvider {
+    String getId();  // "google", "osrm"
+    Route getRoute(LatLng origin, LatLng destination);
+    int getEtaMinutes(LatLng origin, LatLng destination);
+}
+
+public interface AutocompleteProvider {
+    String getId();  // "google", "nominatim"
+    List<PlaceResult> search(String query, LatLng bias, String countryCode, int limit);
+}
+```
+
+**ProviderFactory — resolves provider per city:**
+```java
+@Component
+public class ProviderFactory {
+    private final Map<String, GeocodingProvider> geocodingProviders;
+    private final Map<String, RoutingProvider> routingProviders;
+    private final Map<String, AutocompleteProvider> autocompleteProviders;
+    private final CountryConfigService countryConfigService;
+
+    public GeocodingProvider geocodingFor(UUID cityId) {
+        OperatingCity city = countryConfigService.getCity(cityId);
+        return geocodingProviders.get(city.getGeocodingProvider().toLowerCase());
+    }
+    // Same pattern for routingFor(cityId) and autocompleteFor(cityId)
+}
+```
+
+**GoogleMapsClient — RestClient, no SDK:**
+```java
+@Component
+public class GoogleMapsClient {
+    private final RestClient restClient;
+    private final String apiKey;
+
+    public GoogleMapsClient(@Value("${twende.maps.google.api-key}") String apiKey) {
+        this.apiKey = apiKey;
+        this.restClient = RestClient.builder()
+            .baseUrl("https://maps.googleapis.com/maps/api")
+            .defaultHeader("Accept", "application/json")
+            .build();
+    }
+
+    public GeocodingResponse geocode(String address) { ... }
+    public GeocodingResponse reverseGeocode(double lat, double lng) { ... }
+    public DirectionsResponse directions(double oLat, double oLng, double dLat, double dLng) { ... }
+    public DistanceMatrixResponse distanceMatrix(double oLat, double oLng, double dLat, double dLng) { ... }
+    public PlacesAutocompleteResponse autocomplete(String input, double lat, double lng, String countryCode) { ... }
+}
+```
+
+**GeofenceService — PostGIS point-in-polygon:**
+```java
+@Service
+public class GeofenceService {
+    public Optional<Zone> findZone(UUID cityId, String type, BigDecimal lat, BigDecimal lng) {
+        return zoneRepository.findActiveZoneContainingPoint(cityId, type, lng, lat);
+        // Native query: SELECT * FROM zones WHERE city_id = ? AND type = ? AND is_active = true
+        //   AND ST_Covers(boundary, ST_Point(?, ?)::geography)
+    }
+
+    public boolean isInServiceArea(UUID cityId, BigDecimal lat, BigDecimal lng) {
+        return findZone(cityId, "OPERATING", lat, lng).isPresent();
+    }
+
+    public List<Zone> findAllZonesContaining(UUID cityId, BigDecimal lat, BigDecimal lng) {
+        return zoneRepository.findAllActiveZonesContainingPoint(cityId, lng, lat);
+    }
+}
+```
+
+**GeocodingService — cache-through with DB:**
+```java
+@Service
+public class GeocodingService {
+    public GeocodingResult geocode(String address, LatLng bias, UUID cityId) {
+        String hash = DigestUtils.sha256Hex(address.toLowerCase().strip());
+        Optional<GeocodeCache> cached = geocodeCacheRepository.findByQueryHash(hash);
+        if (cached.isPresent() && cached.get().getExpiresAt().isAfter(Instant.now())) {
+            cached.get().setHitCount(cached.get().getHitCount() + 1);
+            geocodeCacheRepository.save(cached.get());
+            return toResult(cached.get());
+        }
+        GeocodingProvider provider = providerFactory.geocodingFor(cityId);
+        GeocodingResult result = provider.geocode(address, bias);
+        saveToCache(hash, address, result, provider.getId());
+        return result;
+    }
+    // Cache entries expire after 30 days. Scheduled cleanup weekly.
+}
+```
 
 **WebSocket:** `ws://host/ws/location?token={jwt}` — validate JWT in `HandshakeInterceptor`.
 
@@ -627,7 +812,7 @@ redisTemplate.opsForGeo().add(
 redisTemplate.opsForHash().putAll("driver:location:" + driverId, Map.of(...));
 redisTemplate.expire("driver:location:" + driverId, 90, TimeUnit.SECONDS);
 
-// Find nearby drivers
+// Find nearby drivers — NO COUNT limit, broadcast to ALL nearby
 List<GeoResult<RedisGeoCommands.GeoLocation<String>>> nearby =
     redisTemplate.opsForGeo().radius(
         "drivers:" + countryCode + ":" + vehicleType,
@@ -638,10 +823,35 @@ List<GeoResult<RedisGeoCommands.GeoLocation<String>>> nearby =
 
 **Rider location push:** When a ride is active, server pushes driver location to the rider's
 WebSocket session every time the driver sends an update. Use `WebSocketSessionRegistry`
-(a `ConcurrentHashMap<UUID, WebSocketSession>`) to find the rider's session.
+(`ConcurrentHashMap<UUID, WebSocketSession>`) to find the rider's session.
 
 **Trip trace:** During `IN_PROGRESS`, append each location point to
 `RPUSH ride:trace:{rideId}`. When ride completes, flush trace to `trip_traces` PostgreSQL table.
+
+**Caching strategy:**
+- Geocoding / reverse geocoding: DB-level `geocode_cache` table (30-day TTL)
+- Distance matrix / directions: Redis `@Cacheable` keyed on coordinates rounded to 3dp (1-hour TTL)
+- Autocomplete: NOT cached (session-dependent, low cache value)
+
+**Key endpoints:**
+```
+GET    /api/v1/locations/geocode?address=&cityId=          Address → lat/lng
+GET    /api/v1/locations/reverse?lat=&lng=&cityId=         Lat/lng → address
+GET    /api/v1/locations/autocomplete?q=&lat=&lng=&cityId= Place search
+POST   /api/v1/locations/route                              Route between two points
+POST   /api/v1/locations/eta                                ETA only
+GET    /api/v1/locations/zones/check?lat=&lng=&cityId=     What zones contain this point?
+GET    /api/v1/locations/cities/{cityId}/zones              List zones for city
+POST   /api/v1/locations/cities/{cityId}/zones              Create zone (ADMIN)
+PUT    /api/v1/locations/zones/{id}                         Update zone (ADMIN)
+DELETE /api/v1/locations/zones/{id}                         Deactivate zone (ADMIN)
+```
+
+**Provider migration plan:**
+- Phase 1: All cities use GOOGLE for geocoding, routing, and autocomplete
+- Phase 2: Migrate routing to self-hosted OSRM. Update `routing_provider` column per city.
+- Phase 3: Migrate geocoding to Nominatim. Evaluate autocomplete alternatives.
+- `ProviderFactory` reads per-city config — zero code changes in upstream services when switching.
 
 ---
 
@@ -664,9 +874,17 @@ return fare.max(minimumFare).setScale(0, RoundingMode.HALF_UP);
 Surge = min(activeRequests / availableDrivers, surgeMultiplierCap). Only applied if
 `countryConfig.features.surgeEnabled = true`.
 
-**For estimates:** Call Google Maps Distance Matrix API for distance and duration.
+**For estimates:** Call `routingService.getRoute(pickup, dropoff, cityId)` from the location module.
+The routing service delegates to the configured provider (Google/OSRM) per city. Pricing module
+never calls mapping APIs directly.
 **For final fare:** Use actual `distanceMetres` and `durationSeconds` from the ride record
 (populated from trip trace on completion).
+
+**Zone-based pricing adjustments:** Before calculating fare, check `geofenceService.findAllZonesContaining()`
+for pickup and dropoff points:
+- `AIRPORT` zone: add surcharge from `zone.config.surcharge` to the final fare
+- `SURGE` zone: use `zone.config.multiplier` as zone-level surge (stacks with demand surge, capped by `surgeMultiplierCap`)
+- `RESTRICTED` zone: reject the ride request with error from `zone.config.reason`
 
 **Key endpoints:** `POST /api/v1/pricing/estimate`, `POST /api/v1/pricing/calculate`
 
@@ -676,6 +894,19 @@ Surge = min(activeRequests / availableDrivers, surgeMultiplierCap). Only applied
 
 **Purpose:** Broadcast-and-accept matching. Find nearby drivers, send offers, handle the
 accept/reject race using Redis atomic operations.
+
+**Service area validation (in RideService.createRide(), before broadcasting):**
+```java
+OperatingCity city = countryConfigService.findCityContaining(
+    ride.getCountryCode(), ride.getPickupLat(), ride.getPickupLng());
+if (city == null)
+    throw new BadRequestException("Pickup location is outside our service area");
+if (!geofenceService.isInServiceArea(city.getId(), ride.getPickupLat(), ride.getPickupLng()))
+    throw new BadRequestException("Pickup location is outside our service area");
+if (geofenceService.findZone(city.getId(), "RESTRICTED", ride.getPickupLat(), ride.getPickupLng()).isPresent())
+    throw new BadRequestException("Pickup location is in a restricted area");
+ride.setCityId(city.getId());
+```
 
 **Broadcast flow:**
 ```java
@@ -754,6 +985,7 @@ private UUID riderId;
 private UUID driverId;             // null until matched
 private RideStatus status;
 private VehicleType vehicleType;
+private UUID cityId;                   // resolved from pickup location at creation time
 private BigDecimal pickupLat, pickupLng;
 private String pickupAddress;
 private BigDecimal dropoffLat, dropoffLng;
@@ -1155,9 +1387,17 @@ all tests are passing.
 
 ### Phase 4 — Ride Flow
 - [ ] `modules/location/` — WebSocket handler, Redis GEO operations, session registry
-- [ ] `modules/pricing/` — fare calculation, surge (static multiplier in Phase 4, dynamic in Phase 6)
-- [ ] `modules/matching/` — broadcast-and-accept, expansion scheduler
-- [ ] `modules/ride/` — full lifecycle, fare boost, OTP, rejection counter
+- [ ] `modules/location/` — PostGIS extension, zones + geocode_cache tables (V17 migration)
+- [ ] `modules/location/` — Provider interfaces (GeocodingProvider, RoutingProvider, AutocompleteProvider)
+- [ ] `modules/location/` — GoogleMapsClient (RestClient, no SDK) + Google provider implementations
+- [ ] `modules/location/` — GeocodingService (with DB cache), RoutingService, AutocompleteService
+- [ ] `modules/location/` — GeofenceService (PostGIS point-in-polygon zone checks)
+- [ ] `modules/location/` — ZoneController (CRUD, admin), GeocodingController, RoutingController
+- [ ] `modules/location/` — OSRM and Nominatim provider stubs (interface implemented, not wired)
+- [ ] Remove `com.google.maps:google-maps-services` from `pom.xml`
+- [ ] `modules/pricing/` — fare calculation, zone-based adjustments (airport surcharge, zone surge)
+- [ ] `modules/matching/` — broadcast-and-accept, service area validation, expansion scheduler
+- [ ] `modules/ride/` — full lifecycle, fare boost, OTP, rejection counter, cityId on Ride
 - [ ] Tests, ≥80% coverage, commit & push
 
 ### Phase 5 — Commerce
@@ -1327,18 +1567,16 @@ Message message = Message.builder()
 FirebaseMessaging.getInstance().send(message);
 ```
 
-### Google Maps (distance + ETA)
-```java
-GeoApiContext context = new GeoApiContext.Builder().apiKey(apiKey).build();
-DistanceMatrixApiRequest req = DistanceMatrixApi.newRequest(context)
-    .origins(new com.google.maps.model.LatLng(pickupLat, pickupLng))
-    .destinations(new com.google.maps.model.LatLng(dropoffLat, dropoffLng))
-    .mode(TravelMode.DRIVING);
-DistanceMatrix result = req.await();
-long metres = result.rows[0].elements[0].distance.inMeters;
-long seconds = result.rows[0].elements[0].duration.inSeconds;
-```
-Wrap in `@Cacheable` keyed on rounded coordinates (to 3dp) — Google Maps is expensive.
+### Google Maps (geocoding, routing, ETA, autocomplete) — via REST API, no SDK
+All Google Maps calls go through `GoogleMapsClient` in the location module using Spring
+`RestClient`. The `google-maps-services` SDK is NOT used. Other modules (pricing, matching,
+ride) call location module services — never Google directly.
+
+See Module: location specification for `GoogleMapsClient` implementation details.
+
+**Caching:** Geocoding cached in `geocode_cache` DB table (30-day TTL). Distance/directions
+cached in Redis via `@Cacheable` keyed on coordinates rounded to 3dp (1-hour TTL).
+Autocomplete is NOT cached.
 
 ### MinIO (document storage)
 ```java
@@ -1422,7 +1660,15 @@ twende:
   sms:
     dev-mode: ${SMS_DEV_MODE:true}
   maps:
-    api-key: ${GOOGLE_MAPS_API_KEY:}
+    google:
+      api-key: ${GOOGLE_MAPS_API_KEY:}
+      enabled: ${GOOGLE_MAPS_ENABLED:true}
+    osrm:
+      base-url: ${OSRM_BASE_URL:http://localhost:5000}
+      enabled: ${OSRM_ENABLED:false}
+    nominatim:
+      base-url: ${NOMINATIM_BASE_URL:http://localhost:8088}
+      enabled: ${NOMINATIM_ENABLED:false}
   minio:
     endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
     access-key: ${MINIO_ACCESS_KEY:twende}
@@ -1493,3 +1739,16 @@ logging:
 
 15. **Free rides don't count toward the next offer** — a completed free ride does not
     increment the rider's progress toward earning the next free ride offer.
+
+16. **Rides cannot start in RESTRICTED zones** — if the pickup point falls inside a zone
+    with type `RESTRICTED`, reject the ride request. No exceptions.
+
+17. **Zone checks use PostGIS, not application code** — all point-in-polygon checks must
+    use `ST_Covers` via native queries in `ZoneRepository`. Never iterate polygons in Java.
+
+18. **Provider switching is per-city, not global** — each `OperatingCity` has its own
+    `geocoding_provider`, `routing_provider`, and `autocomplete_provider` columns.
+    Changing a provider for one city must not affect other cities.
+
+19. **Google Maps API key is never exposed to clients** — all mapping API calls are
+    server-side via the location module. Frontend gets results from our endpoints only.

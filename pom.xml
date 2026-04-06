@@ -29,7 +29,6 @@
         <minio.version>8.6.0</minio.version>
         <protobuf.version>3.25.5</protobuf.version>
         <grpc.version>1.75.0</grpc.version>
-        <google-maps.version>2.2.0</google-maps.version>
         <sendgrid.version>4.10.2</sendgrid.version>
         <ulid-creator.version>5.2.3</ulid-creator.version>
     </properties>
@@ -160,11 +159,6 @@
             <groupId>io.minio</groupId>
             <artifactId>minio</artifactId>
             <version>${minio.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.google.maps</groupId>
-            <artifactId>google-maps-services</artifactId>
-            <version>${google-maps.version}</version>
         </dependency>
         <dependency>
             <groupId>com.sendgrid</groupId>
