@@ -39,10 +39,10 @@ jobs:
         run: ./mvnw spotless:check --no-transfer-progress
 
   # ──────────────────────────────────────────────
-  # Stage 2: Dependency vulnerability scan
+  # Stage 2: Security scanning (Trivy + CodeQL)
   # ──────────────────────────────────────────────
-  dependency-scan:
-    name: Dependency Vulnerability Scan
+  security-scan:
+    name: Trivy Dependency Scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -54,12 +54,39 @@ jobs:
           distribution: ${{ env.JAVA_DISTRIBUTION }}
           cache: maven
 
-      - name: Sonatype OSS Index Audit
-        run: ./mvnw org.sonatype.ossindex.maven:ossindex-maven-plugin:audit --no-transfer-progress -Dossindex.fail=true
+      - name: Resolve Maven dependencies
+        run: ./mvnw dependency:resolve --no-transfer-progress
 
-  # ──────────────────────────────────────────────
-  # Stage 3: Static analysis (SAST)
-  # ──────────────────────────────────────────────
+      - name: Trivy filesystem scan (dependencies)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret
+          severity: CRITICAL,HIGH
+          exit-code: 1
+          ignore-unfixed: true
+          format: table
+
+      - name: Trivy filesystem scan (SARIF for GitHub Security)
+        uses: aquasecurity/trivy-action@0.28.0
+        if: always()
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-fs-results.sarif
+
+      - name: Upload Trivy SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-fs-results.sarif
+          category: trivy-dependency-scan
+
   sast:
     name: Static Analysis (CodeQL)
     runs-on: ubuntu-latest
@@ -87,7 +114,7 @@ jobs:
           category: /language:java-kotlin
 
   # ──────────────────────────────────────────────
-  # Stage 4: Test + Coverage (gate: 80%)
+  # Stage 3: Test + Coverage (gate: 80%)
   # ──────────────────────────────────────────────
   test:
     name: Test & Coverage
@@ -151,7 +178,7 @@ jobs:
           retention-days: 14
 
   # ──────────────────────────────────────────────
-  # Stage 5: Build JAR artifact
+  # Stage 4: Build JAR artifact
   # ──────────────────────────────────────────────
   build:
     name: Build
@@ -178,7 +205,7 @@ jobs:
           retention-days: 7
 
   # ──────────────────────────────────────────────
-  # Stage 6: Build & scan container image
+  # Stage 5: Build & scan container image (Trivy)
   # ──────────────────────────────────────────────
   container:
     name: Container Build & Scan
@@ -207,27 +234,42 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Trivy container vulnerability scan
-        uses: aquasecurity/trivy-action@master
+      - name: Trivy container image scan
+        uses: aquasecurity/trivy-action@0.28.0
         with:
+          scan-type: image
           image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
-          format: sarif
-          output: trivy-results.sarif
+          scanners: vuln
           severity: CRITICAL,HIGH
           exit-code: 1
+          ignore-unfixed: true
+          format: table
 
-      - name: Upload Trivy scan to GitHub Security
+      - name: Trivy container scan (SARIF for GitHub Security)
+        uses: aquasecurity/trivy-action@0.28.0
+        if: always()
+        with:
+          scan-type: image
+          image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-image-results.sarif
+
+      - name: Upload Trivy image SARIF to GitHub Security
         if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: trivy-results.sarif
+          sarif_file: trivy-image-results.sarif
+          category: trivy-container-scan
 
   # ──────────────────────────────────────────────
-  # Stage 7: Publish container image (main only)
+  # Stage 6: Publish container image (main only)
   # ──────────────────────────────────────────────
   publish:
     name: Publish Container Image
-    needs: [container, dependency-scan, sast]
+    needs: [container, security-scan, sast]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     permissions:
@@ -269,7 +311,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   # ──────────────────────────────────────────────
-  # Stage 8: Deploy (placeholder — enable when
+  # Stage 7: Deploy (placeholder — enable when
   # dev server is provisioned)
   # ──────────────────────────────────────────────
   # deploy-dev:

@@ -1245,19 +1245,21 @@ and on all pull requests targeting those branches.
 | Stage | What it does | Blocks build? |
 |---|---|---|
 | **Lint & Format** | `spotless:check` — enforces consistent code style (Google Java Format, AOSP) | Yes |
-| **Dependency Scan** | Sonatype OSS Index Audit — fails on known vulnerabilities | Yes |
+| **Trivy Dependency Scan** | Filesystem scan of Maven dependencies for CRITICAL/HIGH CVEs + secret detection | Yes |
 | **SAST** | GitHub CodeQL — static analysis for security vulnerabilities (SQL injection, XSS, etc.) | Yes |
 | **Test & Coverage** | `./mvnw verify` with Postgres + Redis services — runs all tests, enforces ≥80% JaCoCo coverage | Yes |
 | **Build** | `./mvnw package` — produces JAR artifact | Yes (needs lint + test) |
-| **Container Build & Scan** | Builds Docker image, scans with Trivy for CRITICAL/HIGH CVEs | Yes (push only) |
+| **Trivy Container Scan** | Builds Docker image, scans with Trivy for CRITICAL/HIGH CVEs in OS packages and runtime | Yes (push only) |
 | **Publish** | Pushes image to GitHub Container Registry (`ghcr.io`) | main branch only |
 | **Deploy** | Placeholder — commented out until dev server is provisioned | — |
 
 ### Key design decisions
-- **Security scanning at 3 levels:** dependencies (Sonatype OSS Index), source code (CodeQL), container image (Trivy)
+- **Trivy as unified security scanner:** one tool for both dependency and container scanning — no API keys, no external DB downloads, fast
+- **Security scanning at 3 levels:** dependencies (Trivy filesystem), source code (CodeQL), container image (Trivy image)
 - **Fail fast:** lint and format run first since they're fastest
 - **Scan results** uploaded to GitHub Security tab (SARIF format) for tracking
-- **Artifacts retained:** JaCoCo report (14 days), dependency-check report (14 days), JAR (7 days)
+- **Only actionable findings:** `ignore-unfixed: true` suppresses CVEs with no available patch
+- **Artifacts retained:** JaCoCo report (14 days), JAR (7 days)
 - **Container runs as non-root** `twende` user with health checks
 - **No secrets in image:** all config via environment variables at runtime
 
