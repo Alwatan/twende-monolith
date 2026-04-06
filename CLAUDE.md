@@ -1245,7 +1245,7 @@ and on all pull requests targeting those branches.
 | Stage | What it does | Blocks build? |
 |---|---|---|
 | **Lint & Format** | `spotless:check` — enforces consistent code style (Google Java Format, AOSP) | Yes |
-| **Dependency Scan** | OWASP Dependency-Check — fails on CVE score ≥ 7 | Yes |
+| **Dependency Scan** | Sonatype OSS Index Audit — fails on known vulnerabilities | Yes |
 | **SAST** | GitHub CodeQL — static analysis for security vulnerabilities (SQL injection, XSS, etc.) | Yes |
 | **Test & Coverage** | `./mvnw verify` with Postgres + Redis services — runs all tests, enforces ≥80% JaCoCo coverage | Yes |
 | **Build** | `./mvnw package` — produces JAR artifact | Yes (needs lint + test) |
@@ -1254,7 +1254,7 @@ and on all pull requests targeting those branches.
 | **Deploy** | Placeholder — commented out until dev server is provisioned | — |
 
 ### Key design decisions
-- **Security scanning at 3 levels:** dependencies (OWASP), source code (CodeQL), container image (Trivy)
+- **Security scanning at 3 levels:** dependencies (Sonatype OSS Index), source code (CodeQL), container image (Trivy)
 - **Fail fast:** lint and format run first since they're fastest
 - **Scan results** uploaded to GitHub Security tab (SARIF format) for tracking
 - **Artifacts retained:** JaCoCo report (14 days), dependency-check report (14 days), JAR (7 days)
