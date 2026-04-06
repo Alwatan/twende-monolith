@@ -1,0 +1,2 @@
+-- Location module schema
+-- See CLAUDE.md module: location

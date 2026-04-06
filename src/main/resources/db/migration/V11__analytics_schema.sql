@@ -1,0 +1,2 @@
+-- Analytics module schema
+-- See CLAUDE.md module: analytics

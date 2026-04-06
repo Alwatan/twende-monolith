@@ -1,0 +1,2 @@
+-- Driver module schema
+-- See CLAUDE.md module: driver

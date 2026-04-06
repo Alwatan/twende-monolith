@@ -1,0 +1,8 @@
+target/
+*.class
+.env
+*.p12
+*.jks
+.idea/
+*.iml
+.DS_Store

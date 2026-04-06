@@ -1,0 +1,2 @@
+-- Tanzania seed data
+-- See CLAUDE.md section 12 (Tanzania config)

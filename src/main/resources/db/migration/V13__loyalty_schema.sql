@@ -1,0 +1,2 @@
+-- Loyalty module schema
+-- See CLAUDE.md for specification

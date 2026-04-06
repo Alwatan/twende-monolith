@@ -1,0 +1,2 @@
+-- Loyalty rules seed data
+-- See CLAUDE.md for specification

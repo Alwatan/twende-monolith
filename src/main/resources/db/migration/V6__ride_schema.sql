@@ -1,0 +1,2 @@
+-- Ride module schema
+-- See CLAUDE.md module: ride

@@ -1,0 +1,2 @@
+-- Notification template seed data
+-- See CLAUDE.md module: notification
