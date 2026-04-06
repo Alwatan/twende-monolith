@@ -301,6 +301,9 @@ jobs:
             type=sha,prefix=
             type=raw,value=latest
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -308,8 +311,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
   # ──────────────────────────────────────────────
   # Stage 7: Deploy (placeholder — enable when
