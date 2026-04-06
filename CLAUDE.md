@@ -64,8 +64,8 @@ Java service calls and Spring `ApplicationEventPublisher` (no Kafka for internal
 | Micrometer Tracing + Zipkin | (included) | Distributed tracing |
 | Testcontainers | 1.20.0 | Integration tests |
 | Africa's Talking SDK | 3.4.11 | SMS (via JitPack) |
-| Firebase Admin SDK | 9.3.0 | Push notifications (FCM) |
-| MinIO SDK | 8.5.11 | File storage (driver docs) |
+| Firebase Admin SDK | 9.4.2 | Push notifications (FCM) |
+| MinIO SDK | 8.6.0 | File storage (driver docs) |
 | Google Maps Services | 2.2.0 | Distance + routing |
 | ULID Creator | 5.2.3 | Time-sortable unique IDs |
 | SendGrid | 4.10.2 | Email |

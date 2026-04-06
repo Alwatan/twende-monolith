@@ -26,8 +26,10 @@
         <testcontainers.version>1.20.0</testcontainers.version>
         <springdoc.version>2.6.0</springdoc.version>
         <africastalking.version>3.4.11</africastalking.version>
-        <firebase.version>9.3.0</firebase.version>
-        <minio.version>8.5.11</minio.version>
+        <firebase.version>9.4.2</firebase.version>
+        <minio.version>8.6.0</minio.version>
+        <protobuf.version>3.25.5</protobuf.version>
+        <grpc.version>1.75.0</grpc.version>
         <google-maps.version>2.2.0</google-maps.version>
         <sendgrid.version>4.10.2</sendgrid.version>
         <ulid-creator.version>5.2.3</ulid-creator.version>
@@ -41,6 +43,18 @@
                 <version>${testcontainers.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+            <!-- CVE-2024-7254: StackOverflow in Protocol Buffers -->
+            <dependency>
+                <groupId>com.google.protobuf</groupId>
+                <artifactId>protobuf-java</artifactId>
+                <version>${protobuf.version}</version>
+            </dependency>
+            <!-- CVE-2025-55163: Netty HTTP/2 DDoS -->
+            <dependency>
+                <groupId>io.grpc</groupId>
+                <artifactId>grpc-netty-shaded</artifactId>
+                <version>${grpc.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
