@@ -63,7 +63,7 @@ Java service calls and Spring `ApplicationEventPublisher` (no Kafka for internal
 | Micrometer + Prometheus | (included) | Metrics |
 | Micrometer Tracing + Zipkin | (included) | Distributed tracing |
 | Testcontainers | 1.20.0 | Integration tests |
-| Africa's Talking SDK | 3.4.11 | SMS (via JitPack) |
+| Africa's Talking REST API | (via Spring RestClient) | SMS — no SDK, direct HTTP calls |
 | Firebase Admin SDK | 9.4.2 | Push notifications (FCM) |
 | MinIO SDK | 8.6.0 | File storage (driver docs) |
 | Google Maps Services | 2.2.0 | Distance + routing |
@@ -491,7 +491,7 @@ spring.jpa.hibernate.ddl-auto: validate  # Flyway manages schema
 ```java
 void requestOtp(String phoneNumber, String countryCode);
 // Rate limit: max 3 OTP requests per phone per 10 min (Redis counter)
-// Generate 6-digit OTP, save to DB with 5-min expiry, send via Africa's Talking
+// Generate 6-digit OTP, save to DB with 5-min expiry, send via SMS (Africa's Talking REST API)
 
 TokenResponse verifyOtp(String phoneNumber, String otp);
 // Check OTP: valid, not used, not expired, attempts < 3
@@ -954,7 +954,7 @@ public void expireSubscriptions() { ... }
 
 ### Module: notification
 
-**Purpose:** Push (FCM), SMS (Africa's Talking), in-app, email. Event-driven — no outbound
+**Purpose:** Push (FCM), SMS (Africa's Talking REST API), in-app, email. Event-driven — no outbound
 REST API called by other modules. Other modules publish Spring events; this module listens.
 
 **Template resolution:** Resolve by `templateKey + locale` (fall back to `en`).
@@ -1277,11 +1277,40 @@ Uncomment the `deploy-dev` job in `ci.yml` and configure:
 
 ## 12. External Integrations
 
-### Africa's Talking (SMS + OTP)
+### Africa's Talking (SMS + OTP) — via REST API, no SDK
+We call the Africa's Talking SMS API directly using Spring's `RestClient`.
+No third-party SDK dependency — avoids transitive vulnerability issues.
+
 ```java
-AfricasTalking.initialize(username, apiKey);
-SMSService smsService = AfricasTalking.getApplication().getSmsService();
-smsService.send("Your code: " + otp, new String[]{phoneNumber}, "TWENDE");
+@Component
+public class AfricasTalkingSmsClient {
+    private final RestClient restClient;
+
+    public AfricasTalkingSmsClient(
+            @Value("${twende.africastalking.api-key}") String apiKey,
+            @Value("${twende.africastalking.username}") String username,
+            @Value("${twende.africastalking.sender-id}") String senderId) {
+        this.restClient = RestClient.builder()
+            .baseUrl("https://api.africastalking.com/version1")
+            .defaultHeader("apiKey", apiKey)
+            .defaultHeader("Content-Type", "application/x-www-form-urlencoded")
+            .defaultHeader("Accept", "application/json")
+            .build();
+        this.username = username;
+        this.senderId = senderId;
+    }
+
+    public void sendSms(String phoneNumber, String message) {
+        restClient.post()
+            .uri("/messaging")
+            .body("username=" + username
+                + "&to=" + URLEncoder.encode(phoneNumber, StandardCharsets.UTF_8)
+                + "&message=" + URLEncoder.encode(message, StandardCharsets.UTF_8)
+                + "&from=" + senderId)
+            .retrieve()
+            .toBodilessEntity();
+    }
+}
 ```
 In dev: set `twende.sms.dev-mode=true` to log OTP to console instead of sending.
 

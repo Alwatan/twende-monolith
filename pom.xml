@@ -25,7 +25,6 @@
         <lombok.version>1.18.34</lombok.version>
         <testcontainers.version>1.20.0</testcontainers.version>
         <springdoc.version>2.6.0</springdoc.version>
-        <africastalking.version>3.4.11</africastalking.version>
         <firebase.version>9.4.2</firebase.version>
         <minio.version>8.6.0</minio.version>
         <protobuf.version>3.25.5</protobuf.version>
@@ -55,34 +54,6 @@
                 <groupId>io.grpc</groupId>
                 <artifactId>grpc-netty-shaded</artifactId>
                 <version>${grpc.version}</version>
-            </dependency>
-            <!-- CVE-2022-25647: Deserialization of Untrusted Data in gson (AT SDK transitive) -->
-            <dependency>
-                <groupId>com.google.code.gson</groupId>
-                <artifactId>gson</artifactId>
-                <version>2.11.0</version>
-            </dependency>
-            <!-- CVE-2021-0341: info disclosure in okhttp (AT SDK transitive) -->
-            <dependency>
-                <groupId>com.squareup.okhttp3</groupId>
-                <artifactId>okhttp</artifactId>
-                <version>4.12.0</version>
-            </dependency>
-            <!-- CVE-2018-1000844/1000850: XXE + directory traversal in retrofit (AT SDK transitive) -->
-            <dependency>
-                <groupId>com.squareup.retrofit2</groupId>
-                <artifactId>retrofit</artifactId>
-                <version>2.11.0</version>
-            </dependency>
-            <dependency>
-                <groupId>com.squareup.retrofit2</groupId>
-                <artifactId>converter-gson</artifactId>
-                <version>2.11.0</version>
-            </dependency>
-            <dependency>
-                <groupId>com.squareup.retrofit2</groupId>
-                <artifactId>converter-scalars</artifactId>
-                <version>2.11.0</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -181,11 +152,6 @@
 
         <!-- External Integrations -->
         <dependency>
-            <groupId>com.github.AfricasTalkingLtd.africastalking-java</groupId>
-            <artifactId>core</artifactId>
-            <version>${africastalking.version}</version>
-        </dependency>
-        <dependency>
             <groupId>com.google.firebase</groupId>
             <artifactId>firebase-admin</artifactId>
             <version>${firebase.version}</version>
@@ -229,14 +195,7 @@
         </dependency>
     </dependencies>
 
-    <repositories>
-        <repository>
-            <id>jitpack.io</id>
-            <url>https://jitpack.io</url>
-        </repository>
-    </repositories>
-
-    <build>
+<build>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
