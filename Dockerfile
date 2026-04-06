@@ -1,5 +1,8 @@
 FROM eclipse-temurin:21-jre-alpine
 
+# Security: patch OS-level vulnerabilities
+RUN apk upgrade --no-cache
+
 # Security: run as non-root
 RUN addgroup -S twende && adduser -S twende -G twende
 
