@@ -944,3 +944,17 @@ public ResponseEntity<ApiResponse<...>> create(@Valid @RequestBody CreateRideReq
   No manual `@Import` needed in consuming services.
 - Each consuming service must add `@EnableJpaAuditing` to activate `@CreatedDate` / `@LastModifiedDate`.
 - The `ulid-creator` dependency (version managed by parent POM) is required for `UlidGenerator`.
+
+---
+
+## Implementation Steps
+
+- [ ] 1. BaseEntity + UlidGenerator (ULID-based UUID primary keys, audit timestamps, countryCode)
+- [ ] 2. ApiResponse\<T\> + PagedResponse\<T\> (standard response wrappers)
+- [ ] 3. All enums: RideStatus, DriverStatus, VehicleType, PaymentStatus, PaymentMethod, SubscriptionPlan, SubscriptionStatus, NotificationType, DocumentType, CountryCode, UserRole, DriverOfferAction, OfferStatus
+- [ ] 4. Exception hierarchy: TwendeException (base), ResourceNotFoundException, UnauthorizedException, ConflictException, BadRequestException
+- [ ] 5. GlobalExceptionHandler (@RestControllerAdvice) + CommonAutoConfiguration (Spring auto-config registration)
+- [ ] 6. KafkaEvent base class + all event POJOs (RideRequestedEvent, RideStatusUpdatedEvent, RideCompletedEvent, RideFareBoostedEvent, DriverMatchedEvent, DriverStatusUpdatedEvent, DriverRejectedRideEvent, DriverOfferNotificationEvent, RideOfferAcceptedEvent, PaymentInitiatedEvent, PaymentCompletedEvent, SubscriptionActivatedEvent, SubscriptionExpiredEvent, UserRegisteredEvent, SendNotificationEvent, FreeRideOfferEarnedEvent, FreeRideCompletedEvent)
+- [ ] 7. Utilities: PhoneUtil (E.164 normalization), CurrencyUtil (format per country), OtpUtil (4-digit + 6-digit via SecureRandom), PaginationUtil
+- [ ] 8. Unit tests for all utilities and enums (>=80% coverage)
+- [ ] 9. Verify build: `./mvnw -pl common-lib clean install`

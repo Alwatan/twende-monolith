@@ -435,3 +435,28 @@ This service does not handle money, but if any monetary fields are ever added, u
 Despite the source doc listing Africa's Talking as a dependency, the actual SMS delivery
 is handled by `notification-service`. Auth-service publishes a Kafka event requesting
 OTP delivery. The Africa's Talking dependency should be removed from `pom.xml` if present.
+
+---
+
+## Implementation Steps
+
+Build in this order. Each step should compile and pass tests before moving to the next.
+
+- [ ] **1. application.yml** — Port 8081, datasource `twende_auth`, Kafka producer config, Redis connection, JWT keystore properties (`twende.auth.jwt.*`), OTP config (`twende.auth.otp.*`), dev-mode flag. Include `spring.jpa.hibernate.ddl-auto: validate` and Flyway config.
+- [ ] **2. Flyway migration V1__create_auth_schema.sql** — Create `auth_users`, `otp_codes`, and `revoked_tokens` tables exactly as specified in section 3. Add indexes on `otp_codes(phone_number)` and `otp_codes(expires_at)`.
+- [ ] **3. Entities** — `AuthUser`, `OtpCode`, `RevokedToken` extending `BaseEntity` from `common-lib`. Map fields to columns per the schema. Use `@Enumerated(EnumType.STRING)` for role. Phone number stored as `VARCHAR(20)`.
+- [ ] **4. Repositories** — `AuthUserRepository` (findByPhoneNumber), `OtpCodeRepository` (findTopByPhoneNumberAndUsedFalseOrderByCreatedAtDesc, deleteByExpiresAtBefore), `RevokedTokenRepository` (existsByJti, deleteByExpiresAtBefore).
+- [ ] **5. DTOs** — `OtpRequestDto` (phoneNumber, countryCode with validation), `OtpVerifyDto` (phoneNumber, otp), `RegisterRequestDto` (fullName, role, countryCode), `TokenResponseDto` (accessToken, refreshToken, tokenType, expiresIn, isNewUser), `UserInfoDto`.
+- [ ] **6. RedisConfig** — `RedisTemplate<String, Object>` bean for OTP rate limiting and token blocklist operations.
+- [ ] **7. KafkaConfig** — Kafka producer bean with `StringSerializer` key and `JsonSerializer` value. Define topic constant `twende.users.registered`.
+- [ ] **8. OtpService** — `requestOtp()`: normalise phone via `PhoneUtil`, rate-limit check via Redis INCR (max 3 per 10 min), generate 6-digit OTP (SecureRandom), save to `otp_codes` with 5-min expiry, in dev mode log OTP else publish Kafka event for SMS delivery. `verifyOtp()`: load latest unused OTP for phone, check not expired, increment attempts (max 3), match code, mark as used on success.
+- [ ] **9. TokenService** — `issueTokens()`: programmatically create OAuth2 access token (1h TTL) + refresh token (30d TTL) using Spring Authorization Server APIs. `revokeToken()`: decode refresh token, extract JTI + expiry, add to Redis blocklist with TTL = remaining lifetime, persist to `revoked_tokens` table. `isRevoked()`: check Redis blocklist for JTI.
+- [ ] **10. Spring Authorization Server config (AuthServerConfig)** — RSA key pair (load from keystore in prod, generate in-memory for dev). JWKSource bean. RegisteredClientRepository with 4 clients: `twende-rider-app`, `twende-driver-app`, `twende-admin`, `twende-internal`. OAuth2TokenCustomizer to add `roles`, `countryCode`, `phoneVerified` claims. Enable refresh token rotation.
+- [ ] **11. AuthService** — `register()`: validate Bearer token, update AuthUser with fullName/role, set phoneVerified=true, publish `UserRegisteredEvent` to Kafka topic `twende.users.registered`. `getCurrentUser()`: extract claims from security context, return UserInfoDto.
+- [ ] **12. SecurityConfig** — Two filter chains: (1) Authorization Server chain at `@Order(1)`, (2) default chain at `@Order(2)`. Public endpoints: `/api/v1/auth/otp/**`, `/oauth2/**`, `/actuator/health`. Authenticated: `/api/v1/auth/register`, `/api/v1/auth/logout`, `/api/v1/auth/me`, `/api/v1/auth/change-phone`. CSRF disabled for stateless API.
+- [ ] **13. AuthController** — `POST /api/v1/auth/otp/request` (public), `POST /api/v1/auth/otp/verify` (public), `POST /api/v1/auth/register` (authenticated), `POST /api/v1/auth/logout` (authenticated), `GET /api/v1/auth/me` (authenticated). All responses wrapped in `ApiResponse<T>`.
+- [ ] **14. UserRegisteredEvent** — Kafka event class with fields: userId, phoneNumber, fullName, role, countryCode, registeredAt. Serialized as JSON.
+- [ ] **15. Scheduled cleanup** — `@Scheduled` job to delete expired OTPs (`otp_codes` where `expires_at < now()`) and expired revoked tokens (`revoked_tokens` where `expires_at < now()`). Run daily.
+- [ ] **16. Unit tests** — OtpService: OTP generation, rate limiting (mock Redis), expiry/attempts logic, phone normalisation. TokenService: token issuance, revocation, blocklist check. AuthService: registration flow, duplicate registration guard. Aim for edge cases: expired OTP, max attempts, invalid phone format.
+- [ ] **17. Integration tests** — Testcontainers (PostgreSQL + Redis + Kafka). Full OTP flow: request -> verify -> receive tokens. Registration flow: verify OTP -> register -> check Kafka event published. Token revocation: logout -> verify token is rejected. Rate limiting: send 4 OTP requests, verify 4th is rejected (429).
+- [ ] **18. Verify** — Run `./mvnw -pl auth-service clean verify`. Confirm all tests pass and JaCoCo coverage >= 80% on non-entity/DTO/config classes.

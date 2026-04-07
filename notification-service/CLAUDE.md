@@ -605,3 +605,21 @@ void givenUnknownLocale_whenResolveTemplate_thenFallsBackToEnglish() { ... }
 - Run: `./mvnw verify`
 - Report: `target/site/jacoco/index.html`
 - Excluded from coverage: entities, DTOs, enums, config classes, `NotificationServiceApplication`
+
+---
+
+## Implementation Steps
+
+- [ ] 1. `application.yml` -- port 8091, datasource `twende_notifications`, Kafka (`consumer.group-id: notification-service-group`), Firebase config (`service-account-json`), Africa's Talking config (`api-key`, `username`, `sender-id`, `base-url`), SendGrid config (`api-key`, `from-email`), `SMS_DEV_MODE=true`, `PUSH_DEV_MODE=false`, country-config-service URL
+- [ ] 2. Entities: `NotificationTemplate` (templateKey, locale, channel, subject, body), `FcmToken` (userId, token, platform, isActive), `NotificationLog` (userId, countryCode, channel, templateKey, title, body, status, provider, providerRef, error, sentAt) -- all extend `BaseEntity`
+- [ ] 3. Repositories: `NotificationTemplateRepository` (`findByKeyAndLocale`), `FcmTokenRepository` (`findFirstByUserIdAndIsActiveTrueOrderByCreatedAtDesc`), `NotificationLogRepository`
+- [ ] 4. `SmsProvider` interface (`getId`, `sendSms`, `supportsCountry`) + `AfricasTalkingSmsProvider` (RestClient to AT REST API, NO SDK, URL-encoded form body) + `TwilioSmsProvider` (stub, throws `UnsupportedOperationException`)
+- [ ] 5. `PushProvider` interface (`getId`, `sendNotification`, `sendData`) + `FcmPushProvider` (Firebase Admin SDK, reads token from DB, handles notification vs data payloads) + `OneSignalPushProvider` (stub)
+- [ ] 6. `FirebaseConfig`: `@PostConstruct` initialization from `service-account-json`, skip if blank
+- [ ] 7. `TemplateResolver`: resolve by `templateKey + locale` with fallback chain (exact locale -> language only -> `en`), replace `{placeholders}` with params
+- [ ] 8. `NotificationService`: `sendSms`, `sendPush`, `sendPushData`, `sendEmail` -- delegate to providers based on country config (fetched via `CountryConfigClient` RestClient call, cached in Redis), log every attempt to `notification_log`
+- [ ] 9. `CountryConfigClient`: RestClient to country-config-service for `smsProvider` and `pushProvider` resolution per country
+- [ ] 10. Kafka consumers (`NotificationEventConsumer` + handlers): `twende.rides.status-updated` (rider push on DRIVER_ASSIGNED/ARRIVED), `twende.rides.completed` (receipt push), `twende.drivers.approved` (SMS + push), `twende.drivers.offer-notification` (driver offer push), `twende.payments.completed` (payment confirmation), `twende.subscriptions.expired` (bundle expiry push), `twende.loyalty.free-ride-earned` (free ride offer push), `twende.notifications.send` (generic direct send) -- all idempotent
+- [ ] 11. `FcmTokenController`: `POST /api/v1/notifications/fcm-token` -- upsert `(userId, token)`, mark inactive tokens on FCM UNREGISTERED errors
+- [ ] 12. Flyway migrations: `V1__create_notifications_schema.sql` (tables + indexes), `V2__seed_notification_templates.sql` (Swahili + English templates for all events)
+- [ ] 13. Unit tests + integration tests (Testcontainers for PostgreSQL, Redis, Kafka; WireMock for Africa's Talking and country-config-service; mock Firebase), verify >= 80% coverage with `./mvnw verify`

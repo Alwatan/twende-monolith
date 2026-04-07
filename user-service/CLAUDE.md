@@ -562,3 +562,23 @@ void givenSavedPlace_whenDeletedByDifferentUser_thenForbidden() { ... }
 # Run locally (requires PostgreSQL + Redis + Kafka)
 java -jar user-service/target/user-service-*.jar
 ```
+
+---
+
+## Implementation Steps
+
+Work through these in order. Do not skip ahead.
+
+- [ ] **1. application.yml** — Configure port 8083, datasource `twende_users`, Redis connection, Kafka consumer (`user-service-group`, earliest offset, `JsonDeserializer` with trusted packages) and producer (`JsonSerializer`), ride-service URL for RestClient
+- [ ] **2. Entities** — Create `UserProfile` (extends `BaseEntity`, maps to `users` table, ID set explicitly from Kafka event not auto-generated) and `SavedPlace` (extends `BaseEntity`, maps to `saved_places` table)
+- [ ] **3. Repositories** — Create `UserProfileRepository` and `SavedPlaceRepository` with query methods (`findByUserId` for saved places, `existsById` for idempotency checks)
+- [ ] **4. UserService** — Implement `getProfile(UUID)`, `updateProfile(UUID, UpdateProfileRequest)` with Kafka event publishing on update, `getRideHistory()` delegating to `RideServiceClient`
+- [ ] **5. SavedPlaceService** — Implement CRUD for saved places with ownership validation (verify `userId` matches calling user before delete)
+- [ ] **6. Kafka consumer** — `UserRegisteredConsumer` listening on `twende.users.registered` with group `user-service-group`. Filter for `role == RIDER` only. Idempotent: check `existsById` before inserting. Set `UserProfile.id` from event payload (do not auto-generate)
+- [ ] **7. Kafka producer** — `UserProfileUpdatedProducer` publishing `UserProfileUpdatedEvent` to `twende.users.profile-updated` on every successful profile update
+- [ ] **8. RideServiceClient** — Spring `RestClient` calling ride-service at configured URL for paginated ride history. Forward `X-User-Id` header. Handle errors gracefully
+- [ ] **9. UserController + SavedPlaceController** — `GET/PUT /api/v1/users/me`, `POST /api/v1/users/me/photo`, `GET/POST/DELETE /api/v1/users/me/saved-places`, `GET /api/v1/users/me/ride-history`, admin `GET /api/v1/users/{id}`. Read identity from `X-User-Id` header. All responses wrapped in `ApiResponse<T>`
+- [ ] **10. DTOs + MapStruct mapper** — Create `UserProfileDto`, `UpdateProfileRequest` (with validation annotations), `SavedPlaceDto`, `CreateSavedPlaceRequest`, `RideHistoryResponse`, Kafka event DTOs. Create `UserMapper` with MapStruct
+- [ ] **11. Flyway migration** — `V1__create_users_schema.sql` with `users` table (PK not auto-generated) and `saved_places` table with index on `user_id`
+- [ ] **12. Unit tests + integration tests** — Unit tests for `UserService`, `SavedPlaceService` (ownership validation), `UserRegisteredConsumer` (idempotency, role filtering). Integration tests with Testcontainers (PostgreSQL + Kafka) covering profile CRUD, saved places CRUD, Kafka consumption and publishing
+- [ ] **13. Verify build** — Run `./mvnw -pl user-service clean verify` and confirm all tests pass with minimum 80% line coverage

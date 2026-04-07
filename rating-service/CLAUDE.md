@@ -488,3 +488,18 @@ void givenMultipleRatings_whenAggregateQueried_thenCorrectAverageComputed() { ..
 - Minimum 80% line coverage enforced by JaCoCo
 - Run: `./mvnw -pl rating-service verify`
 - Excluded from coverage: DTOs, enums, config classes
+
+---
+
+## Implementation Steps
+
+- [ ] 1. `application.yml` -- port 8092, datasource `twende_ratings`, Redis (cache manager with 1h TTL), Kafka (`consumer.group-id: twende-rating`), ride-service URL
+- [ ] 2. Entity: `Rating` (rideId, ratedUserId, raterUserId, raterRole, score `Short` 1-5, comment) -- extends `BaseEntity`
+- [ ] 3. Repository: `RatingRepository` -- `existsByRideIdAndRaterRole`, `findAverageScoreByRatedUserId`, `countByRatedUserId`, distribution query by score
+- [ ] 4. `RideClient`: RestClient to ride-service `GET /internal/rides/{id}` for ride validation (riderId, driverId, status, completedAt)
+- [ ] 5. `RatingService`: `submitRating(userId, role, request)` -- validate ride COMPLETED, caller is participant, no duplicate (unique check), determine ratedUserId from role, save rating, recompute aggregate, update Redis cache `rating:driver:{id}` / `rating:rider:{id}`, publish Kafka event; `getDriverScore(driverId)` -- read from Redis, compute from DB on cache miss
+- [ ] 6. Kafka consumer: `RideCompletedConsumer` listening on `twende.rides.completed` (group: `twende-rating`) -- store ride metadata locally for later rating inference (avoid sync call to ride-service)
+- [ ] 7. Kafka producer: `RatingEventPublisher` publishing `RatingSubmittedEvent` to `twende.ratings.submitted` (key: `{countryCode}:{rideId}`)
+- [ ] 8. `RatingController` (POST `/api/v1/ratings`, GET `/api/v1/ratings/driver/{driverId}`, GET `/api/v1/ratings/me`) + `InternalRatingController` (GET `/internal/ratings/driver/{driverId}/score` -- plain DTO, no `ApiResponse` wrapper)
+- [ ] 9. Flyway migration: `V1__create_ratings_schema.sql` (table with UNIQUE(ride_id, rater_role), CHECK(score BETWEEN 1 AND 5), indexes)
+- [ ] 10. Unit tests + integration tests (Testcontainers for PostgreSQL, Redis, Kafka; WireMock for ride-service), verify >= 80% coverage with `./mvnw -pl rating-service verify`

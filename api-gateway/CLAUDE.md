@@ -583,3 +583,25 @@ Do not add `common-lib` to `pom.xml`.
 
 ### Formatting
 Run `./mvnw spotless:apply` from the `api-gateway/` directory before committing.
+
+---
+
+## Implementation Steps
+
+Build in this order. Each step should compile and pass tests before moving to the next.
+
+- [ ] **1. application.yml** — Port 8080, `spring.main.web-application-type: reactive`, JWKS URI pointing to auth-service (`${AUTH_SERVICE_URL}/oauth2/jwks`), Redis connection for rate limiting, all route definitions with env var base URLs (see section 10 for full config). Include Resilience4j circuit breaker and time limiter defaults. Actuator endpoints (health, metrics, prometheus). Logging levels.
+- [ ] **2. GatewayApplication.java** — `@SpringBootApplication` main class. No `@EnableJpaAuditing`, no `@EnableCaching` (this is a stateless gateway).
+- [ ] **3. SecurityConfig** — OAuth2 resource server with JWT decoder using JWKS URI from auth-service. Permit `/actuator/health`, `/api/v1/auth/**`, `/oauth2/**` without auth. Disable CSRF (stateless). Configure as reactive security (`@EnableWebFluxSecurity`).
+- [ ] **4. AuthFilter** — `GatewayFilter` (order -100). Extract Bearer token from `Authorization` header, decode via `ReactiveJwtDecoder`, inject `X-User-Id` (from `sub`), `X-User-Role` (from `roles` claim), `X-Country-Code` (from `countryCode` claim) into downstream request headers. Return 401 if token missing/invalid/expired.
+- [ ] **5. RoleFilter** — `GatewayFilterFactory<RoleFilter.Config>` with configurable `roles` list. Read `X-User-Role` header (set by AuthFilter), return 403 if role not in allowed list. Usage in route config: `RoleFilter=ADMIN` or `RoleFilter=DRIVER,ADMIN`.
+- [ ] **6. InternalRouteBlockFilter** — `GlobalFilter` that matches `/internal/**` paths and returns 404. Prevents external access to service-to-service endpoints.
+- [ ] **7. RequestLoggingFilter** — `GlobalFilter` that logs HTTP method, path, `X-User-Id` (if present), response status code, and request duration in milliseconds. Runs on every request.
+- [ ] **8. Rate limiting** — `IpKeyResolver` bean (resolves client IP), `UserKeyResolver` bean (resolves `X-User-Id` header, falls back to "anonymous"). Wire into route config: public routes use ipKeyResolver (10 req/s, burst 20), authenticated routes use userKeyResolver (30 req/s, burst 60). Backed by reactive Redis.
+- [ ] **9. RedisConfig** — Reactive `ReactiveRedisConnectionFactory` and `ReactiveRedisTemplate` beans for rate limiting counters.
+- [ ] **10. CorsConfig** — `CorsWebFilter` bean allowing origins `https://admin.twende.app`, `https://app.twende.app`, `http://localhost:3000`. Allow all standard methods, expose rate limit headers, `allowCredentials: true`, max age 3600s. Support `${CORS_ALLOWED_ORIGINS}` env var override.
+- [ ] **11. Resilience4jConfig** — Circuit breaker defaults: sliding window 10, failure rate threshold 50%, wait 10s in open state, 3 calls in half-open. Time limiter: 5s timeout. Fallback controller returning 503 with JSON body `{"success": false, "message": "Service temporarily unavailable. Please try again shortly.", "data": null}`.
+- [ ] **12. Route definitions** — All routes per section 5 route table. Auth-service and config GET routes are public (no AuthFilter). WebSocket route `/ws/**` uses `ws://` URI and bypasses AuthFilter. Block `/internal/**` with SetStatus=404. Apply AuthFilter + RoleFilter to admin-only routes (analytics, compliance, config write).
+- [ ] **13. Unit tests** — AuthFilter: valid JWT injects correct headers, missing token returns 401, expired token returns 401, malformed token returns 401. RoleFilter: matching role passes, non-matching role returns 403, missing role header returns 403. InternalRouteBlockFilter: `/internal/anything` returns 404. RequestLoggingFilter: verify log output includes method, path, duration.
+- [ ] **14. Integration tests** — Testcontainers (Redis). Use `WebTestClient` (not MockMvc). Mock downstream services with WireMock. Test full request flow: valid JWT -> route to downstream -> response returned with correct status. Test rate limiting: send requests exceeding limit, verify 429 response. Test WebSocket route passthrough (no auth required). Test `/internal/**` blocked. Use a test RSA key pair to generate valid/invalid JWTs.
+- [ ] **15. Verify** — Run `./mvnw -pl api-gateway clean verify`. Confirm all tests pass and JaCoCo coverage >= 80% on filter and config classes.

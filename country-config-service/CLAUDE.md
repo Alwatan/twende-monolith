@@ -506,3 +506,22 @@ logging:
 
 8. **Tanzania is the only active country at launch** — but the schema and code must
    support adding Kenya (`KE`) and Uganda (`UG`) with zero code changes (insert rows only).
+
+---
+
+## Implementation Steps
+
+Work through these in order. Do not skip ahead.
+
+- [ ] **1. application.yml** — Configure port 8082, datasource `twende_config`, Redis connection, Kafka producer settings, OAuth2 resource server JWT validation
+- [ ] **2. Entities** — Create `CountryConfig` (PK = `code CHAR(2)`), `VehicleTypeConfig`, `OperatingCity`, `PaymentMethodConfig`, `RequiredDriverDocument`. All extend `BaseEntity` from common-lib except `CountryConfig` (natural key)
+- [ ] **3. Repositories** — Create `CountryConfigRepository`, `VehicleTypeConfigRepository`, `OperatingCityRepository`, `PaymentMethodConfigRepository`, `RequiredDriverDocumentRepository` with required query methods
+- [ ] **4. CountryConfigService** — Implement `getConfig()` with Redis cache-through (5-min TTL), `updateConfig()` that saves to DB + evicts Redis cache + publishes Kafka event to `twende.config.country-updated`. Add CRUD methods for vehicle types, cities, payment methods, and required documents
+- [ ] **5. CountryConfigController** — Public `GET` endpoints (full config, vehicle types, cities, active countries). Admin-only `POST`/`PUT`/`PATCH` endpoints for config writes. All responses wrapped in `ApiResponse<T>`
+- [ ] **6. SecurityConfig** — OAuth2 resource server configuration. Public access on all `GET` endpoints and `/actuator/health`. `ADMIN` role required on all write endpoints, validated via `X-User-Role` header or JWT claims
+- [ ] **7. RedisConfig** — Configure `RedisTemplate<String, Object>` and `CacheManager` with 5-minute default TTL for country config entries
+- [ ] **8. KafkaConfig** — Configure Kafka producer for `twende.config.country-updated` topic with `JsonSerializer` for event payloads
+- [ ] **9. DTOs + MapStruct mapper** — Create `CountryConfigDto`, `VehicleTypeConfigDto`, `OperatingCityDto`, `PaymentMethodConfigDto`, `UpdateCountryConfigRequest`, `UpdateFeaturesRequest`, `CreateCityRequest`, `CountryConfigUpdatedEvent` (Kafka payload). Create `CountryConfigMapper` with MapStruct
+- [ ] **10. Flyway migrations** — `V1__create_country_config_schema.sql` (all tables) and `V2__seed_tanzania.sql` (Tanzania seed data including country config, 3 vehicle types, 2 cities, 2 payment methods, 4 required documents)
+- [ ] **11. Unit tests + integration tests** — Unit tests for `CountryConfigService` (caching logic, cache eviction, Kafka publishing). Integration tests with Testcontainers (PostgreSQL + Redis) covering all endpoints, seed data verification, cache behavior, and admin authorization
+- [ ] **12. Verify build** — Run `./mvnw -pl country-config-service clean verify` and confirm all tests pass with minimum 80% line coverage

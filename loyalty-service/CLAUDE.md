@@ -549,3 +549,19 @@ void givenOfferWith5KmMax_whenRideIs8Km_thenOfferNotApplicable() { ... }
 - Run: `./mvnw verify`
 - Report: `target/site/jacoco/index.html`
 - Excluded from coverage: entities, DTOs, enums, config classes, `LoyaltyServiceApplication`
+
+---
+
+## Implementation Steps
+
+- [ ] 1. `application.yml` -- port 8095, datasource `twende_loyalty`, Redis, Kafka (`consumer.group-id: loyalty-service-group`), JPA validate, Flyway enabled
+- [ ] 2. Entities: `LoyaltyRule` (countryCode, vehicleType, requiredRides, requiredDistanceKm, freeRideMaxDistanceKm, offerValidityDays, isActive), `RiderProgress` (riderId, countryCode, vehicleType, rideCount, totalDistanceKm, lastResetAt), `FreeRideOffer` (riderId, countryCode, vehicleType, maxDistanceKm, status, earnedAt, expiresAt, redeemedAt, rideId) -- all extend `BaseEntity`
+- [ ] 3. Repositories: `LoyaltyRuleRepository` (`findByCountryCodeAndVehicleTypeAndIsActiveTrue`), `RiderProgressRepository` (`findByRiderIdAndCountryCodeAndVehicleType`), `FreeRideOfferRepository` (`findFirstBy...OrderByEarnedAtAsc`, `findByStatusAndExpiresAtBefore`)
+- [ ] 4. `LoyaltyService`: `onRideCompleted` (skip free rides, increment progress, check threshold, award if met), `findApplicableOffer(riderId, countryCode, vehicleType, distanceKm)`, `getProgress(riderId)`, `getRules(countryCode)`, `updateRule(id, request)` + `OfferRedemptionService`: `redeemOffer(offerId, rideId)` -- `@Transactional`, validate AVAILABLE + not expired
+- [ ] 5. Kafka consumer: `LoyaltyEventConsumer` listening on `twende.rides.completed` (group: `loyalty-service-group`) -- skip if `freeRide=true`, increment progress, call `checkAndAwardOffer`, ensure idempotency
+- [ ] 6. Kafka producer: `LoyaltyEventPublisher` publishing `FreeRideOfferEarnedEvent` to `twende.loyalty.free-ride-earned`
+- [ ] 7. `OfferExpiryScheduler`: `@Scheduled(fixedDelay = 3_600_000)`, find AVAILABLE offers past `expiresAt`, mark EXPIRED
+- [ ] 8. `LoyaltyController` (rider-facing: GET `/progress`, GET `/offers`, GET `/rules`) + admin PUT `/rules/{id}` + `LoyaltyInternalController` (GET `/internal/loyalty/offers/applicable`, POST `/internal/loyalty/offers/{id}/redeem`)
+- [ ] 9. Flyway migrations: `V1__create_loyalty_schema.sql` (tables + indexes), `V2__seed_loyalty_rules.sql` (Tanzania rules for BAJAJ, BODA_BODA, ECONOMY_CAR)
+- [ ] 10. MapStruct mapper: `LoyaltyMapper` for entity-to-DTO conversions
+- [ ] 11. Unit tests + integration tests (Testcontainers for PostgreSQL, Redis, Kafka), verify >= 80% coverage with `./mvnw verify`

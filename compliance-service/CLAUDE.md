@@ -708,3 +708,19 @@ void givenKenyaCountryCode_whenBatchRuns_thenSkippedBecauseReportingNotRequired(
 - Minimum 80% line coverage enforced by JaCoCo
 - Run: `./mvnw -pl compliance-service verify`
 - Excluded from coverage: DTOs, enums, config classes, stub adapters (NTSA, KCCA)
+
+---
+
+## Implementation Steps
+
+- [ ] 1. `application.yml` -- port 8094, datasource `twende_compliance`, Kafka (`consumer.group-id: twende-compliance`), SUMATRA config (`base-url`, `api-key`, `enabled`), NTSA/KCCA stubs config, JPA validate, Flyway enabled
+- [ ] 2. Entities: `TripReport` (rideId UNIQUE, driverId, riderId, vehicleType, pickup/dropoff lat/lng, distanceMetres, durationSeconds, fare BigDecimal, currency, startedAt, completedAt, submitted boolean, submittedAt, submissionRef, submissionError) extends `BaseEntity`; `AuditLog` (countryCode, eventType, entityId, actorId, payload JSONB, occurredAt) -- standalone with ULID PK, no updatedAt
+- [ ] 3. Repositories: `TripReportRepository` (`existsByRideId`, `findByCountryCodeAndSubmittedFalseOrderByCreatedAtAsc` with `Pageable`), `AuditLogRepository` (queries by countryCode, eventType, entityId, date ranges with pagination)
+- [ ] 4. `ComplianceAdapter` interface (`getCountryCode`, `submitTripReport`, `isTripReportingRequired`) + `SumatraAdapter` (RestClient for SUMATRA API, map `TripReport` to SUMATRA payload, store `submissionRef`) + `NtsaAdapter` stub (KE, not required) + `KccaAdapter` stub (UG, not required)
+- [ ] 5. `ComplianceService`: adapter resolution from `Map<String, ComplianceAdapter>`, `createTripReport` (from `RideCompletedEvent` data, idempotent via `existsByRideId` check); `AuditService`: `log(countryCode, eventType, entityId, actorId, payload)` -- append-only insert
+- [ ] 6. Kafka consumers: `ComplianceEventConsumer` -- `twende.rides.completed` (create trip report + audit log), all other major topics (`twende.rides.cancelled`, `twende.rides.requested`, `twende.payments.completed`, `twende.payments.failed`, `twende.subscriptions.activated`, `twende.subscriptions.expired`, `twende.users.registered`, `twende.drivers.approved`, `twende.drivers.status-updated`, `twende.ratings.submitted`) write to audit log only
+- [ ] 7. `BatchSubmissionService`: `@Scheduled(cron = "0 0 * * * *")` every hour, iterate adapters where `isTripReportingRequired()`, fetch up to 500 unsubmitted reports per country, submit individually via adapter, mark submitted or store error, continue on failure
+- [ ] 8. `ComplianceController` (GET `/api/v1/compliance/reports` with filters, GET `/api/v1/compliance/reports/{id}`, GET `/api/v1/compliance/reports/stats`, POST `/api/v1/compliance/reports/retry`) + `AuditLogController` (GET `/api/v1/compliance/audit-log` with filters) -- all require ADMIN role
+- [ ] 9. `ComplianceException` for adapter submission failures
+- [ ] 10. Flyway migration: `V1__create_compliance_schema.sql` (both tables + all indexes, partial index on `submitted = false`)
+- [ ] 11. Unit tests + integration tests (Testcontainers for PostgreSQL and Kafka; WireMock for SUMATRA API), verify >= 80% coverage with `./mvnw -pl compliance-service verify`

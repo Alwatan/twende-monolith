@@ -298,3 +298,17 @@ void givenActiveSubscriptionPastExpiry_whenSchedulerRuns_thenMarkedExpiredAndEve
 - Minimum 80% line coverage enforced by JaCoCo
 - Run: `./mvnw verify`
 - Excluded from coverage: DTOs, enums, config classes
+
+---
+
+## Implementation Steps
+
+- [ ] 1. `application.yml` -- port 8090, datasource `twende_subscriptions`, Redis, Kafka (`consumer.group-id: twende-subscription`), payment-service URL (`http://localhost:8089`)
+- [ ] 2. Entities: `SubscriptionPlan` (countryCode, planType, price, currencyCode, durationHours, displayName, isActive), `Subscription` (driverId, planId, status, paymentMethod, amountPaid, startedAt, expiresAt, paymentRef)
+- [ ] 3. Repositories: `SubscriptionPlanRepository`, `SubscriptionRepository` -- include `existsByDriverIdAndStatusAndExpiresAtAfter`, `findByStatusAndExpiresAtBefore`
+- [ ] 4. `SubscriptionService`: `getPlans(countryCode)`, `purchase(driverId, planId, paymentMethod)` -- validate plan exists + active + correct country, check no active subscription, create record as `PENDING_PAYMENT`, call payment-service `POST /internal/payments/subscription` via RestClient, on success set `ACTIVE` + timestamps, on failure set `CANCELLED`; `hasActiveSubscription(driverId)` -- boolean check
+- [ ] 5. `ExpiryScheduler`: `@Scheduled(fixedDelay = 600_000)`, find `ACTIVE` subscriptions with `expiresAt < now()`, mark `EXPIRED`, publish Kafka event for each
+- [ ] 6. Kafka producers: `twende.subscriptions.activated` (on successful purchase), `twende.subscriptions.expired` (on expiry)
+- [ ] 7. `SubscriptionController` (driver-facing: GET plans, GET current, POST purchase, GET history) + internal endpoint `GET /internal/subscriptions/{driverId}/active` returning `ApiResponse<Boolean>`
+- [ ] 8. Flyway migrations: `V1__create_subscription_schema.sql` (tables + indexes), `V2__seed_tanzania_plans.sql` (daily/weekly/monthly plans)
+- [ ] 9. Unit tests + integration tests (Testcontainers for PostgreSQL and Kafka; WireMock for payment-service), verify >= 80% coverage with `./mvnw verify`

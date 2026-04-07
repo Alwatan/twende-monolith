@@ -679,51 +679,39 @@ all tests are passing.
 5. **Minimum 80% line coverage** on all new code. If below 80%, write more tests.
 6. Once all tests pass with >=80% coverage, commit and push.
 
+**Detailed implementation sub-steps are in each service's `CLAUDE.md` file.** The phases
+below define the order and what services to build. For the step-by-step breakdown of HOW
+to build each service, refer to the **"Implementation Steps"** section in that service's
+`{service}/CLAUDE.md`.
+
 ### Phase 1 — Foundation
-- [ ] `common-lib` — BaseEntity, UlidGenerator, ApiResponse, PagedResponse, all exceptions,
-      GlobalExceptionHandler, all enums, all Kafka event POJOs, all utilities
-- [ ] `api-gateway` — routing config, JWT validation filter, header injection,
-      rate limiting, CORS, WebSocket passthrough
-- [ ] `auth-service` — OTP request/verify, JWT issuance (Spring Authorization Server),
-      token refresh, logout + blocklist, user registration event
+- [ ] `common-lib` — see `common-lib/CLAUDE.md` → Implementation Steps
+- [ ] `auth-service` — see `auth-service/CLAUDE.md` → Implementation Steps
+- [ ] `api-gateway` — see `api-gateway/CLAUDE.md` → Implementation Steps
 
 ### Phase 2 — Core Data
-- [ ] `country-config-service` — country CRUD, vehicle type config, operating cities,
-      payment methods, feature flags, Redis caching, Tanzania seed data
-- [ ] `user-service` — rider profile (created on UserRegisteredEvent), saved places
-- [ ] `driver-service` — driver profile, documents (MinIO upload), vehicles,
-      go-online validation (requires active subscription), status management
+- [ ] `country-config-service` — see `country-config-service/CLAUDE.md` → Implementation Steps
+- [ ] `user-service` — see `user-service/CLAUDE.md` → Implementation Steps
+- [ ] `driver-service` — see `driver-service/CLAUDE.md` → Implementation Steps
 
 ### Phase 3 — Ride Flow
-- [ ] `location-service` — WebSocket handler, Redis GEO operations, session registry,
-      PostGIS zones, geocode cache, provider abstraction (Google/OSRM/Nominatim),
-      GoogleMapsClient (RestClient), GeocodingService, RoutingService, GeofenceService
-- [ ] `pricing-service` — fare formula, surge calculation, zone-based adjustments
-      (airport surcharge, zone surge, restricted rejection)
-- [ ] `matching-service` — broadcast-and-accept, driver scoring, expansion scheduler,
-      acceptance race (Redis SETNX), re-broadcast on fare boost, service area validation
-- [ ] `ride-service` — full ride lifecycle, fare boost, trip start OTP, rejection counter,
-      free ride / loyalty integration, ride history
+- [ ] `location-service` — see `location-service/CLAUDE.md` → Implementation Steps
+- [ ] `pricing-service` — see `pricing-service/CLAUDE.md` → Implementation Steps
+- [ ] `matching-service` — see `matching-service/CLAUDE.md` → Implementation Steps
+- [ ] `ride-service` — see `ride-service/CLAUDE.md` → Implementation Steps
 
 ### Phase 4 — Commerce
-- [ ] `payment-service` — Selcom integration, driver wallet, wallet entries,
-      free ride wallet credit on ride completion, withdrawal
-- [ ] `subscription-service` — plans CRUD, purchase via payment-service,
-      expiry scheduler, active subscription check (internal API)
-- [ ] `loyalty-service` — loyalty rules, rider progress tracking,
-      free ride offer creation/redemption/expiry
+- [ ] `payment-service` — see `payment-service/CLAUDE.md` → Implementation Steps
+- [ ] `subscription-service` — see `subscription-service/CLAUDE.md` → Implementation Steps
+- [ ] `loyalty-service` — see `loyalty-service/CLAUDE.md` → Implementation Steps
 
 ### Phase 5 — Supporting Features
-- [ ] `notification-service` — FCM push (Firebase Admin SDK), SMS (Africa's Talking
-      RestClient), email (SendGrid), template resolution (i18n), event listeners,
-      provider abstraction (SmsProvider, PushProvider), per-country provider switching
-- [ ] `rating-service` — submit rating, aggregate scores, Redis cache
+- [ ] `notification-service` — see `notification-service/CLAUDE.md` → Implementation Steps
+- [ ] `rating-service` — see `rating-service/CLAUDE.md` → Implementation Steps
 
 ### Phase 6 — Admin & Observability
-- [ ] `analytics-service` — event ingestion (Kafka), earnings dashboard,
-      trip stats, materialized summaries
-- [ ] `compliance-service` — SUMATRA adapter, trip report generation,
-      batch submission scheduler, audit logging
+- [ ] `analytics-service` — see `analytics-service/CLAUDE.md` → Implementation Steps
+- [ ] `compliance-service` — see `compliance-service/CLAUDE.md` → Implementation Steps
 - [ ] Admin endpoints across all services (`X-User-Role == ADMIN` check)
 - [ ] Prometheus metrics exposed at `/actuator/prometheus`
 - [ ] Zipkin tracing configured

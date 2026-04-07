@@ -406,3 +406,20 @@ void givenSelcomFailure_whenSubscriptionPayment_thenTransactionMarkedProcessingA
 - Minimum 80% line coverage enforced by JaCoCo
 - Run: `./mvnw verify`
 - Excluded from coverage: DTOs, enums, config classes
+
+---
+
+## Implementation Steps
+
+- [ ] 1. `application.yml` -- port 8089, datasource `twende_payments`, Redis, Kafka (`consumer.group-id: payment-service`), Selcom config (`base-url`, `api-key`, `api-secret`), country-config-service URL
+- [ ] 2. Entities: `Transaction`, `DriverWallet`, `WalletEntry`, `CashDeclaration` -- all extending `BaseEntity`, BigDecimal for money fields, Instant for timestamps
+- [ ] 3. Repositories: `TransactionRepository`, `DriverWalletRepository`, `WalletEntryRepository`, `CashDeclarationRepository` -- include `findByStatusAndInitiatedAtBefore` for retry scheduler
+- [ ] 4. `PaymentProvider` interface (`getId`, `charge`, `disburse`, `refund`) + `PaymentGateway` (provider map resolution) + `SelcomProvider` (RestClient to Selcom API, circuit breaker via Resilience4j)
+- [ ] 5. `WalletService`: `creditDriverWallet`, `debitDriverWallet` -- both `@Transactional`, balance update + `WalletEntry` insert atomically, insufficient balance check on debit
+- [ ] 6. `PaymentService`: `processSubscriptionPayment` (called via internal API), `processRidePayment` (cash declaration flow), `processWithdrawal` (validate balance, debit wallet, call Selcom disburse, re-credit on failure)
+- [ ] 7. Kafka consumers: `twende.rides.completed` (if `freeRide=true` credit driver wallet with `finalFare`; cash rides create transaction record only), `twende.subscriptions.activated` (record subscription charge transaction)
+- [ ] 8. Kafka producers: `twende.payments.completed`, `twende.payments.failed` -- publish after payment processing completes or fails
+- [ ] 9. `RetryScheduler`: `@Scheduled(fixedDelay = 300_000)`, find `PROCESSING` transactions older than 5 min, retry via `PaymentGateway`, mark `COMPLETED` or `FAILED`
+- [ ] 10. `PaymentController` (driver-facing: wallet, earnings, withdraw, cash-declare) + internal endpoints (`/internal/payments/ride`, `/internal/payments/subscription`, `/internal/payments/refund`, `/internal/payments/{id}`)
+- [ ] 11. Flyway migration `V1__create_payment_schema.sql` with all tables and indexes
+- [ ] 12. Unit tests + integration tests (Testcontainers for PostgreSQL, Redis, Kafka; WireMock for Selcom), verify >= 80% coverage with `./mvnw verify`

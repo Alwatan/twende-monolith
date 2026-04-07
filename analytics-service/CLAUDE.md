@@ -497,3 +497,19 @@ void givenNonAdminUser_whenAdminOverviewRequested_thenForbidden() { ... }
 - Minimum 80% line coverage enforced by JaCoCo
 - Run: `./mvnw -pl analytics-service verify`
 - Excluded from coverage: DTOs, enums, config classes
+
+---
+
+## Implementation Steps
+
+- [ ] 1. `application.yml` -- port 8093, datasource `twende_analytics`, Redis (optional dashboard cache), Kafka (`consumer.group-id: twende-analytics`), JPA validate, Flyway enabled
+- [ ] 2. Entities: `AnalyticsEvent` (eventType, actorId, payload JSONB, occurredAt) extends `BaseEntity`; `DriverDailySummary` (driverId, date, tripCount, totalEarned BigDecimal, onlineHours BigDecimal) extends `BaseEntity` with UNIQUE(driverId, date)
+- [ ] 3. Repositories: `AnalyticsEventRepository` (queries by eventType, countryCode, actorId, date ranges), `DriverDailySummaryRepository` (aggregate queries for earnings, `@Query` SUM by driverId + date range, upsert support)
+- [ ] 4. `EventIngestionService`: map Kafka event to `AnalyticsEvent` entity (resolve actorId per event type), save -- fast insert-only, no external calls
+- [ ] 5. Kafka consumers: `AnalyticsEventConsumer` with `@KafkaListener` on all 7 topics (`twende.rides.completed`, `twende.rides.cancelled`, `twende.payments.completed`, `twende.subscriptions.activated`, `twende.users.registered`, `twende.drivers.approved`, `twende.ratings.submitted`) -- delegate to `EventIngestionService`
+- [ ] 6. `SummaryRefreshService`: `@Scheduled(cron = "0 0 2 * * *")` nightly at 2 AM UTC, query yesterday's RIDE_COMPLETED events, group by driverId, compute tripCount + totalEarned + onlineHours, upsert into `driver_daily_summaries` (`ON CONFLICT DO UPDATE`)
+- [ ] 7. `DriverAnalyticsService`: query `driver_daily_summaries` for earnings breakdown (daily/weekly/monthly), trip stats with date range filtering, default to last 7 days
+- [ ] 8. `AdminAnalyticsService`: platform-wide KPIs from `analytics_events` (totalRides, totalDrivers, activeSubscriptions, revenue), per-country metrics using JSONB queries
+- [ ] 9. `DriverAnalyticsController` (GET `/api/v1/analytics/driver/earnings`, GET `/api/v1/analytics/driver/trips`) + `AdminAnalyticsController` (GET `/api/v1/analytics/admin/overview`, GET `/api/v1/analytics/admin/countries/{code}` -- ADMIN role required)
+- [ ] 10. Flyway migration: `V1__create_analytics_schema.sql` (both tables + all indexes)
+- [ ] 11. Unit tests + integration tests (Testcontainers for PostgreSQL and Kafka), verify >= 80% coverage with `./mvnw -pl analytics-service verify`

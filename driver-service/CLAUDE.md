@@ -510,3 +510,29 @@ void givenNoActiveSubscription_whenGoOnline_thenThrowsPaymentRequired() { ... }
 - Run: `./mvnw verify`
 - Report: `target/site/jacoco/index.html`
 - Excluded from coverage: entities, DTOs, enums, config classes, `DriverServiceApplication`
+
+---
+
+## Implementation Steps
+
+Work through these in order. Do not skip ahead.
+
+- [ ] **1. application.yml** — Configure port 8084, datasource `twende_drivers`, Redis connection, Kafka consumer (`driver-service-group`, earliest offset, `JsonDeserializer` with trusted packages) and producer (`JsonSerializer`), MinIO endpoint/credentials/bucket, subscription-service URL, location-service URL, country-config-service URL, document max file size (10 MB)
+- [ ] **2. Entities** — Create `DriverProfile` (extends `BaseEntity`, maps to `drivers` table, ID set explicitly from Kafka event), `DriverVehicle` (extends `BaseEntity`, maps to `driver_vehicles`), `DriverDocument` (extends `BaseEntity`, maps to `driver_documents`), `DriverStatusLog` (extends `BaseEntity`, maps to `driver_status_log`)
+- [ ] **3. Repositories** — Create `DriverProfileRepository`, `DriverVehicleRepository` (with `existsByDriverIdAndIsActiveTrue`), `DriverDocumentRepository` (with `findByDriverId`, unique constraint on `driverId + documentType`), `DriverStatusLogRepository`
+- [ ] **4. DriverService** — Implement profile CRUD, go-online validation (must be APPROVED or OFFLINE + active subscription via `SubscriptionClient` + active vehicle), go-offline, status transitions with logging to `driver_status_log`. Publish `DriverStatusUpdatedEvent` to Kafka on every status change
+- [ ] **5. DocumentService** — Upload document file to MinIO at path `twende-driver-documents/{driverId}/{documentType}/{filename}`, create `DriverDocument` with status `PENDING` and `fileUrl`. Admin verify/reject endpoint updates status and sets `verifiedBy`, `verifiedAt`, `rejectionReason`
+- [ ] **6. VehicleService** — Register vehicle (validate vehicle type against country-config-service required types), list vehicles, set active vehicle. Enforce unique constraint on `driverId + plateNumber`
+- [ ] **7. DriverApprovalService** — Admin approve (transition `PENDING_APPROVAL` to `APPROVED`, set `approvedAt` and `approvedBy`, publish `DriverApprovedEvent` to Kafka). Admin reject (set `REJECTED` with `rejectionReason`). Admin suspend (any status to `SUSPENDED`). Admin reinstate (`SUSPENDED` to `APPROVED`)
+- [ ] **8. Kafka consumer** — `DriverEventConsumer` listening on: `twende.users.registered` (create profile if `role == DRIVER`, idempotent), `twende.rides.completed` (update driver trip count and last trip timestamp), `twende.subscriptions.activated` (cache subscription status), `twende.subscriptions.expired` (force driver offline if `ONLINE_AVAILABLE`, log status change, publish status-updated event)
+- [ ] **9. Kafka producer** — `DriverEventPublisher` publishing to `twende.drivers.status-updated` (on status changes) and `twende.drivers.approved` (on admin approval)
+- [ ] **10. SubscriptionClient** — Spring `RestClient` calling subscription-service at `/internal/subscriptions/{driverId}/active`. Returns `true` on 200, `false` on 404. No Feign
+- [ ] **11. LocationClient** — Spring `RestClient` calling location-service for GEO index operations (add/remove driver from spatial index on go-online/go-offline)
+- [ ] **12. MinioConfig** — Configure MinIO client bean with endpoint, access key, secret key from application properties. Ensure bucket `twende-driver-documents` exists on startup
+- [ ] **13. DriverController** — Self-service endpoints under `/api/v1/drivers/me/**` (profile, documents, vehicles, status, summary). Read identity from `X-User-Id` header. All responses wrapped in `ApiResponse<T>`. Validate requests with `@Valid @RequestBody`
+- [ ] **14. DriverAdminController** — Admin endpoints under `/api/v1/drivers/**` (paginated list with filters, driver detail, approval, document verification, suspend). Require `X-User-Role: ADMIN`
+- [ ] **15. DriverInternalController** — Internal endpoints under `/internal/drivers/**` (get driver by ID, get active vehicle). No auth headers required. Called by matching-service and ride-service via RestClient
+- [ ] **16. DTOs + MapStruct mapper** — Request DTOs (`UpdateDriverRequest`, `RegisterVehicleRequest`, `UpdateStatusRequest`, `ApprovalRequest`) with validation annotations. Response DTOs (`DriverProfileDto`, `DriverVehicleDto`, `DriverDocumentDto`, `DriverSummaryDto`, `ActiveVehicleDto`). Kafka event DTOs. Create `DriverMapper` with MapStruct
+- [ ] **17. Flyway migration** — `V1__create_driver_schema.sql` with `drivers` table (PK not auto-generated), `driver_vehicles`, `driver_documents`, `driver_status_log` tables, indexes, and `driver_status` enum type
+- [ ] **18. Unit tests + integration tests** — Unit tests for `DriverService` (go-online validation, status transitions), `DocumentService`, `VehicleService`, `DriverApprovalService`, `DriverEventConsumer` (idempotency, role filtering, forced offline). Integration tests with Testcontainers (PostgreSQL + Kafka) covering all endpoints, status transitions, Kafka consumption and publishing
+- [ ] **19. Verify build** — Run `./mvnw -pl driver-service clean verify` and confirm all tests pass with minimum 80% line coverage
