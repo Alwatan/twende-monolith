@@ -121,14 +121,14 @@ CREATE TABLE driver_stats_snapshot (
    - If validation fails: publish error event back to ride-service, stop
 
 3. FIND CANDIDATES
-   - Call location-service: GET /internal/drivers/nearby?cc={cc}&vehicleType={vt}&lat={lat}&lng={lng}&radiusKm=3&limit=15
+   - Call location-service: GET /internal/drivers/nearby?cc={cc}&vehicleType={vt}&lat={lat}&lng={lng}&radiusKm=3&limit=30
      (location-service runs GEORADIUS on drivers:{cc}:{vehicleType})
    - Filter: driver status == ONLINE_AVAILABLE, no active reservation
    - Score by: distance (50%) + rating (30%) + acceptance_rate (20%)
-   - Take top 10 after scoring
+   - Take closest 30 after scoring (max 30 drivers per broadcast)
 
 4. BROADCAST (fire-and-forget per driver)
-   For each of the top 10 candidates:
+   For each of the closest 30 candidates:
      a. Attempt SETNX driver_offered:{driverId}:{rideId} = "1" EX 20
         (prevents same driver being offered same ride twice)
      b. If SETNX returned true:
@@ -163,9 +163,9 @@ CREATE TABLE driver_stats_snapshot (
 8. EXPANSION SCHEDULER (@Scheduled every 30s):
    - Query ride-service for rides in REQUESTED status
    - For each ride, read ride_offer_batches:{rideId} (current batch number)
-   - Batch 1 (0-60s):   3km radius, top 10 -- already done by initial broadcast
-   - Batch 2 (61-120s): 5km radius, next 10 not yet offered or rejected
-   - Batch 3 (121-180s): 10km radius, next 10 not yet offered or rejected
+   - Batch 1 (0-60s):   3km radius, closest 30 -- already done by initial broadcast
+   - Batch 2 (61-120s): 5km radius, next 30 not yet offered or rejected
+   - Batch 3 (121-180s): 10km radius, next 30 not yet offered or rejected
    - After 180s: publish NoDriverFoundEvent to Kafka
    - INCR ride_offer_batches:{rideId} after each expansion
    - Filter candidates: NOT in rides_offered_to:{rideId} AND NOT in driver_rejected:{rideId}
@@ -342,19 +342,19 @@ public class ExpansionScheduler {
             if (currentBatch < targetBatch) {
                 List<String> candidates = locationServiceClient.findNearbyDrivers(
                     ride.getCountryCode(), ride.getVehicleType(),
-                    ride.getPickupLat(), ride.getPickupLng(), radiusKm, 15);
+                    ride.getPickupLat(), ride.getPickupLng(), radiusKm, 30);
 
                 // Filter out already-offered and rejected drivers
                 List<String> newCandidates = filterNewCandidates(ride.getId(), candidates);
 
-                // Score and take top 10
+                // Score and take closest 30
                 List<DriverCandidate> scored = scoreCandidates(newCandidates, ride);
-                List<DriverCandidate> top10 = scored.stream()
+                List<DriverCandidate> closest30 = scored.stream()
                     .sorted(Comparator.comparingDouble(DriverCandidate::getScore).reversed())
-                    .limit(10)
+                    .limit(30)
                     .toList();
 
-                broadcastOffers(ride, top10, targetBatch);
+                broadcastOffers(ride, closest30, targetBatch);
 
                 // Update batch counter
                 redisTemplate.opsForValue().set(batchKey, String.valueOf(targetBatch));
@@ -867,7 +867,7 @@ Complete these in order. Each step should compile and pass existing tests before
 - [ ] **3. Repositories** -- `OfferLogRepository` (queries by rideId, driverId, offeredAt range). `DriverStatsSnapshotRepository` (findByDriverId, upsert for daily snapshot)
 - [ ] **4. Inter-service clients (RestClient)** -- `LocationServiceClient`: geofence check (`isInServiceArea`, `isInRestrictedZone`, `resolveCityId`), nearby drivers (`findNearbyDrivers`). `DriverServiceClient`: driver status and vehicle info. `RatingServiceClient`: driver average rating. `RideServiceClient`: fetch rides in REQUESTED status for expansion scheduler. Configure all in `RestClientConfig` with base URLs from `twende.services.*`
 - [ ] **5. DriverScoringService** -- Implement `scoreCandidate()`: distance (50%), rating (30%), acceptance rate (20%). Read acceptance rate from Redis hash `driver_stats:{driverId}`. Normalise distance score as `1 - (distanceKm / radiusKm)`. Normalise rating as `(rating - 1) / 4`. Deprioritize (but do not block) drivers with acceptance rate below 30%
-- [ ] **6. MatchingService** -- `onRideRequested()`: validate service area via `LocationServiceClient` (OPERATING zone check, RESTRICTED zone check, resolve cityId). Find candidates via `LocationServiceClient.findNearbyDrivers()` with 3km radius and limit 15. Score candidates via `DriverScoringService`. Take top 10 and delegate to `OfferBroadcastService`
+- [ ] **6. MatchingService** -- `onRideRequested()`: validate service area via `LocationServiceClient` (OPERATING zone check, RESTRICTED zone check, resolve cityId). Find candidates via `LocationServiceClient.findNearbyDrivers()` with 3km radius and limit 30. Score candidates via `DriverScoringService`. Take closest 30 and delegate to `OfferBroadcastService`
 - [ ] **7. OfferBroadcastService** -- `broadcastOffers()`: for each candidate, SETNX `driver_offered:{driverId}:{rideId}` (TTL 20s) for dedup. On success: SADD to `rides_offered_to:{rideId}` (TTL 300s), HINCRBY `driver_stats:{driverId} offered_count`, publish `DriverOfferNotificationEvent` to Kafka topic `twende.drivers.offer-notification`, save `OfferLog` record to DB
 - [ ] **8. AcceptanceService** -- `tryAcceptRide()`: SETNX `ride_accepted:{rideId}` = driverId (TTL 60s). If won: publish `RideOfferAcceptedEvent` to `twende.rides.offer-accepted`, update `OfferLog` response to ACCEPTED, HINCRBY accepted_count, recompute acceptance_rate. If lost: return "Ride already accepted", update `OfferLog` response to RIDE_TAKEN. `handleDriverReject()`: SADD `driver_rejected:{rideId}` (TTL 300s), HINCRBY rejection_count, recompute acceptance_rate, update `OfferLog` response to REJECTED, publish `DriverRejectedRideEvent` to `twende.drivers.rejected-ride`
 - [ ] **9. ExpansionScheduler** -- `@Scheduled(fixedDelay = 30_000)`: query ride-service for REQUESTED rides. For each ride, read `ride_offer_batches:{rideId}` for current batch. Batch 1 (0-60s): 3km, already done. Batch 2 (61-120s): 5km, filter new candidates NOT in `rides_offered_to` or `driver_rejected` sets, score and broadcast top 10. Batch 3 (121-180s): 10km, same filter logic. After 180s: publish `NoDriverFoundEvent` to `twende.rides.no-driver-found`, cleanup all Redis keys. INCR batch counter after each expansion

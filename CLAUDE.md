@@ -157,7 +157,7 @@ Ride Service (8085)  ──── REST ────▶  Pricing Service (8088)
   ▼
 Matching Service (8086)
   │  queries Redis GEO for nearby drivers
-  │  broadcasts offer to ~10 drivers via push notification
+  │  broadcasts offer to closest 30 drivers via push notification
   │  first driver to ACCEPT wins (Redis SETNX atomic lock)
   │  publishes Kafka: twende.rides.offer-accepted
   ▼
