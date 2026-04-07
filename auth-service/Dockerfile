@@ -14,7 +14,7 @@ RUN for mod in api-gateway country-config-service user-service driver-service \
     subscription-service notification-service loyalty-service rating-service \
     analytics-service compliance-service; do \
     mkdir -p "$mod"; \
-    echo '<project><modelVersion>4.0.0</modelVersion><parent><groupId>com.twende</groupId><artifactId>twende-parent</artifactId><version>1.0.0-SNAPSHOT</version></parent><artifactId>'"$mod"'</artifactId></project>' > "$mod/pom.xml"; \
+    echo '<project><modelVersion>4.0.0</modelVersion><parent><groupId>tz.co.twende</groupId><artifactId>twende-parent</artifactId><version>1.0.0-SNAPSHOT</version></parent><artifactId>'"$mod"'</artifactId></project>' > "$mod/pom.xml"; \
     done
 
 COPY mvnw .
