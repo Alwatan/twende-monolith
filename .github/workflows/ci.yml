@@ -138,25 +138,25 @@ jobs:
 
   # ──────────────────────────────────────────────
   # Stage 4: Static Analysis (CodeQL)
-  # Skipped until real source code exists
   # ──────────────────────────────────────────────
-  # sast:
-  #   name: Static Analysis (CodeQL)
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: github/codeql-action/init@v3
-  #       with:
-  #         languages: java-kotlin
-  #     - uses: actions/setup-java@v4
-  #       with:
-  #         java-version: ${{ env.JAVA_VERSION }}
-  #         distribution: ${{ env.JAVA_DISTRIBUTION }}
-  #         cache: maven
-  #     - run: ./mvnw compile --no-transfer-progress -DskipTests
-  #     - uses: github/codeql-action/analyze@v3
-  #       with:
-  #         category: /language:java-kotlin
+  sast:
+    name: Static Analysis (CodeQL)
+    needs: [lint]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: java-kotlin
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          cache: maven
+      - run: ./mvnw compile --no-transfer-progress -DskipTests
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:java-kotlin
 
   # ──────────────────────────────────────────────
   # Stage 5: Deploy (placeholder)
