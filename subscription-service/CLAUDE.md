@@ -301,6 +301,40 @@ void givenActiveSubscriptionPastExpiry_whenSchedulerRuns_thenMarkedExpiredAndEve
 
 ---
 
+## Charter, Cargo & Flat Fee Expansion (Phase 7-9)
+
+### Flat Fee as Alternative Revenue Model (Phase 7)
+
+- Drivers choose between `SUBSCRIPTION` or `FLAT_FEE` as their revenue model
+- `SUBSCRIPTION`: existing model -- pay daily/weekly/monthly bundle, keep 100% of earnings
+- `FLAT_FEE`: no upfront bundle payment. Twende deducts a percentage from each trip's earnings
+
+### Revenue Model Rules
+
+- **Ride drivers** can switch revenue model monthly (not mid-month). Switch takes effect at start of next calendar month
+- **Charter/cargo drivers** are always `FLAT_FEE` -- subscription option is not available for these service categories
+- One active revenue model at a time per driver
+
+### New Table: `flat_fee_configs`
+
+- Schema: `country_code CHAR(2)`, `service_category VARCHAR(20)`, `percentage NUMERIC(5,2)`
+- Example rows: `(TZ, RIDE, 15.00)`, `(TZ, CHARTER, 12.00)`, `(TZ, CARGO, 10.00)`
+- Admin-managed, cached in Redis
+
+### Updated Internal API
+
+- `hasActiveRevenueModel(driverId)` replaces `hasActiveSubscription()` -- returns `true` if driver has active subscription OR is registered for flat fee
+- Driver-service calls this updated check during go-online validation
+- Response includes `revenueModel` type so driver-service knows which model is active
+
+### New Endpoints
+
+- `GET /api/v1/subscriptions/flat-fee/config` -- available flat fee rates for driver's country
+- `POST /api/v1/subscriptions/revenue-model` -- switch revenue model (effective next month for ride drivers)
+- `GET /internal/subscriptions/{driverId}/revenue-model` -- returns active revenue model type and details
+
+---
+
 ## Implementation Steps
 
 - [ ] 1. `application.yml` -- port 8090, datasource `twende_subscriptions`, Redis, Kafka (`consumer.group-id: twende-subscription`), payment-service URL (`http://localhost:8089`)

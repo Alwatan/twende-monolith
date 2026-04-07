@@ -947,6 +947,36 @@ public ResponseEntity<ApiResponse<...>> create(@Valid @RequestBody CreateRideReq
 
 ---
 
+## Charter, Cargo & Flat Fee Expansion (Phase 7-9)
+
+### New Enums (Phase 7)
+
+- `ServiceCategory`: `RIDE`, `CHARTER`, `CARGO` -- classifies the type of transport service
+- `RevenueModel`: `SUBSCRIPTION`, `FLAT_FEE` -- how the driver pays Twende
+- `BookingType`: `ON_DEMAND`, `SCHEDULED` -- immediate vs future pickup
+- `QualityTier`: `STANDARD`, `LUXURY` -- quality level for charter vehicles
+- `TripDirection`: `ONE_WAY`, `ROUND_TRIP` -- for charter bookings
+
+### New VehicleType Values (Phase 7)
+
+Add to existing `VehicleType` enum:
+- `MINIBUS_STANDARD` -- standard charter minibus (14-25 passengers)
+- `MINIBUS_LUXURY` -- luxury charter minibus (14-25 passengers)
+- `BUS_STANDARD` -- standard charter bus (26-50 passengers)
+- `BUS_LUXURY` -- luxury charter bus (26-50 passengers)
+- `CARGO_TUKTUK` -- cargo tuk-tuk for small loads
+- `TRUCK_LIGHT` -- light truck (up to 1.5 tons)
+- `TRUCK_MEDIUM` -- medium truck (1.5-5 tons)
+- `TRUCK_HEAVY` -- heavy truck (5+ tons)
+
+### New Kafka Events (Phase 7)
+
+- `BookingRequestedEvent` (`com.twende.common.event.ride`) -- published when a charter or cargo booking is created. Includes `serviceCategory`, `bookingType`, `scheduledPickupAt`, `qualityTier`, cargo metadata
+- `BookingCompletedEvent` (`com.twende.common.event.ride`) -- published when a charter or cargo trip completes. Includes `serviceCategory`, final fare, cargo/charter-specific fields
+- `FlatFeeDeductedEvent` (`com.twende.common.event.payment`) -- published when Twende's flat fee cut is deducted from a driver's wallet. Includes `driverId`, `rideId`, `fareAmount`, `feePercentage`, `feeAmount`
+
+---
+
 ## Implementation Steps
 
 - [ ] 1. BaseEntity + UlidGenerator (ULID-based UUID primary keys, audit timestamps, countryCode)

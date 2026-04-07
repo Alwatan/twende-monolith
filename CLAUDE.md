@@ -9,20 +9,81 @@
 
 ## 1. What is Twende?
 
-Twende ("Let's Go" in Swahili) is a ride-hailing platform for African markets, launching
-first in **Tanzania**. The core competitive advantage is the **driver subscription model**:
-drivers pay a daily / weekly / monthly bundle and keep **100% of their earnings** — no
-per-trip commission. This is fundamentally different from Uber and Bolt.
+Twende ("Let's Go" in Swahili) is a **transport platform** for African markets, launching
+first in **Tanzania**. It covers three service categories: **ride-hailing**, **charter
+transport** (group/event bookings), and **cargo/freight**. The core competitive advantage
+is flexible pricing — drivers choose between a **subscription model** (keep 100% of
+earnings) or a **flat fee model** (Twende takes a percentage per trip).
 
-**Key differentiating features (build these, do not simplify them away):**
+### Service Categories
+
+| Category | Description | Booking | Payment |
+|----------|-------------|---------|---------|
+| **Rides** | On-demand ride-hailing (Bajaj, Boda, Car) | On-demand (now) | Cash at end of trip |
+| **Charter** | Pre-booked group transport for events (weddings, funerals, meetings) | Scheduled (future date/time), one-way or round trip | Cash — upfront before trip starts or upon completion |
+| **Cargo** | Pre-booked freight transport | Scheduled (future date/time), one-way or round trip | Cash — upfront before trip starts or upon completion |
+
+### Revenue Models
+
+| Model | How it works | Available for |
+|-------|-------------|---------------|
+| **Subscription** | Driver pays daily/weekly/monthly bundle, keeps 100% of earnings | Rides only |
+| **Flat fee** | Twende takes a configured percentage per trip from driver earnings | Rides, Charter, Cargo |
+
+- Ride drivers **choose** subscription or flat fee (can switch monthly)
+- Charter and Cargo drivers are **always flat fee** — no subscription option
+
+### Key Differentiating Features (build these, do not simplify them away)
+
+**Rides:**
 - Driver subscription bundles (daily TSh 2,000 / weekly TSh 10,000 / monthly TSh 35,000)
+- Flat fee alternative (e.g. 15% per trip — configurable per country)
 - Fare boost: rider can increase their offer to attract faster acceptance
 - Rejection counter: rider sees how many drivers passed on their trip
 - Trip start OTP: rider shares a 4-digit code with the driver to begin the trip
 - Broadcast-and-accept matching: offer is sent to ALL nearby eligible drivers simultaneously
-- Multi-country config: Tanzania now, Kenya and Uganda without code changes later
 
-**Vehicle types (Tanzania):** Bajaj (tuk-tuk), Boda Boda (motorcycle), Economy Car
+**Charter:**
+- Pre-book minibuses and buses for specific dates/times
+- Quality tiers: Standard vs Luxury (AC, reclining seats, WiFi)
+- One-way or round trip support
+- Drivers browse and accept available bookings (not broadcast matching)
+- Cash payment — upfront before trip or upon job completion
+
+**Cargo:**
+- Pre-book cargo vehicles for specific dates/times
+- Vehicle types by capacity: Cargo Tuk-tuk, Light Truck, Medium Truck, Heavy Truck
+- Weight/volume-based pricing
+- One-way or round trip support
+- Drivers browse and accept available bookings (not broadcast matching)
+- Cash payment — upfront before trip or upon job completion
+- Always flat fee — no subscription option
+
+**All categories:**
+- Multi-country config: Tanzania now, Kenya and Uganda without code changes later
+- Trip start OTP for all categories
+
+### Vehicle Types (Tanzania)
+
+**Rides:** Bajaj (tuk-tuk), Boda Boda (motorcycle), Economy Car
+
+**Charter:**
+
+| Type | Passengers | Quality |
+|------|-----------|---------|
+| Minibus Standard | 14-18 | Basic |
+| Minibus Luxury | 14-18 | AC, reclining seats, audio system |
+| Bus Standard | 30-50 | Basic |
+| Bus Luxury | 30-50 | AC, WiFi, reclining seats |
+
+**Cargo:**
+
+| Type | Capacity |
+|------|----------|
+| Cargo Tuk-tuk | Up to 500 kg |
+| Light Truck | Up to 3 tonnes |
+| Medium Truck | 3-10 tonnes |
+| Heavy Truck | 10+ tonnes |
 
 ---
 
@@ -596,72 +657,81 @@ Endpoint: `ws://host/ws/location?token={jwt}` — JWT validated during handshake
 
 ## 11. Important Business Rules (Never Override These)
 
-1. **Driver keeps 100%** — ride fare goes entirely to the driver. Twende earns from
-   subscription bundles only. Never deduct a percentage from ride payment to Twende.
+1. **Subscription drivers keep 100%** — for drivers on the subscription model, ride fare
+   goes entirely to the driver. Twende earns from subscription bundles only.
 
-2. **No subscription = no online** — a driver with an expired subscription cannot set
-   status to `ONLINE_AVAILABLE`. Hard block in driver-service.
+2. **Flat fee drivers pay a percentage** — for drivers on the flat fee model, Twende
+   deducts a configured percentage (e.g. 15%) from the fare. The percentage is set per
+   country and per service category in country-config-service.
 
-3. **Fare can only go up** — a rider can boost the fare during `REQUESTED` status but
+3. **Charter and Cargo are always flat fee** — no subscription option for charter or cargo
+   drivers. Twende always takes its cut.
+
+4. **No subscription and no flat fee = no online** — a ride driver must have either an
+   active subscription OR be registered for flat fee. Charter/cargo drivers must be
+   registered for flat fee. Hard block in driver-service.
+
+5. **Fare can only go up** — a rider can boost the fare during `REQUESTED` status but
    cannot reduce it. Once boosted, base fare + boost is the floor.
 
-4. **OTP is single-use** — null out `tripStartOtpHash` immediately after successful
+6. **OTP is single-use** — null out `tripStartOtpHash` immediately after successful
    verification. Never re-use the same OTP.
 
-5. **Money arithmetic uses BigDecimal only** — never `double`, never `float`.
+7. **Money arithmetic uses BigDecimal only** — never `double`, never `float`.
 
-6. **Trip start requires physical presence** — OTP must be entered by the driver after
+8. **Trip start requires physical presence** — OTP must be entered by the driver after
    arriving. Do not allow drivers to mark `IN_PROGRESS` without a valid OTP. No exceptions.
 
-7. **Country config is read-only at runtime** — only admin endpoints can modify country
+9. **Country config is read-only at runtime** — only admin endpoints can modify country
    config. Services read it (with caching) but never write it.
 
-8. **Driver rejection is permanent for that ride** — once a driver rejects a ride,
+10. **Driver rejection is permanent for that ride** — once a driver rejects a ride,
    they must not receive another offer for the same ride, even if the fare is boosted.
    Check `driver_rejected:{rideId}` Redis set before re-broadcasting.
 
-9. **Phone numbers in E.164 format** — always normalise via `PhoneUtil.normalise()` before
+11. **Phone numbers in E.164 format** — always normalise via `PhoneUtil.normalise()` before
    storing. `+255712345678`, not `0712345678` or `255712345678`.
 
-10. **Wallet updates are always transactional** — balance update and wallet_entry insert
+12. **Wallet updates are always transactional** — balance update and wallet_entry insert
     in one `@Transactional` method. Never update the balance without an entry.
 
-11. **Riders pay cash only** — all rider payments are physical cash at end of trip.
-    No digital payment processing on the rider side. Selcom is only for driver
+13. **All customer payments are cash** — rides: cash at end of trip. Charter and cargo:
+    cash either upfront before trip starts or upon job completion (customer and driver
+    agree). No digital payment on the customer side. Selcom is only for driver
     subscriptions and wallet payouts.
 
-12. **Free rides are Twende's cost** — when a loyalty free ride completes, Twende
+14. **Free rides are Twende's cost** — when a loyalty free ride completes, Twende
     credits the driver's wallet with the full calculated fare. The driver is never
     penalised for accepting a free ride.
 
-13. **Free ride offers are vehicle-type-specific** — an offer earned on Bajaj rides
+15. **Free ride offers are vehicle-type-specific** — an offer earned on Bajaj rides
     can only be redeemed on a Bajaj ride. Offers do not transfer across vehicle types.
 
-14. **Free ride offers are distance-capped** — a free ride offer specifies a maximum
+16. **Free ride offers are distance-capped** — a free ride offer specifies a maximum
     distance (km). If the rider's requested trip exceeds this distance, the offer
     cannot be applied to that ride.
 
-15. **Free rides don't count toward the next offer** — a completed free ride does not
+17. **Free rides don't count toward the next offer** — a completed free ride does not
     increment the rider's progress toward earning the next free ride offer.
 
-16. **Rides cannot start in RESTRICTED zones** — if the pickup point falls inside a zone
+18. **Rides cannot start in RESTRICTED zones** — if the pickup point falls inside a zone
     with type `RESTRICTED`, reject the ride request. No exceptions.
 
-17. **Zone checks use PostGIS, not application code** — all point-in-polygon checks must
+19. **Zone checks use PostGIS, not application code** — all point-in-polygon checks must
     use `ST_Covers` via native queries in `ZoneRepository`. Never iterate polygons in Java.
 
-18. **Provider switching is per-city, not global** — each `OperatingCity` has its own
+20. **Provider switching is per-city, not global** — each `OperatingCity` has its own
     `geocoding_provider`, `routing_provider`, and `autocomplete_provider` columns.
     Changing a provider for one city must not affect other cities.
 
-19. **Google Maps API key is never exposed to clients** — all mapping API calls are
+21. **Google Maps API key is never exposed to clients** — all mapping API calls are
     server-side via the location-service. Frontend gets results from our endpoints only.
 
-20. **SMS and push provider switching is per-country** — `CountryConfig.smsProvider` and
+22. **SMS and push provider switching is per-country** — `CountryConfig.smsProvider` and
     `CountryConfig.pushProvider` determine which implementation handles notifications.
     Changing a provider for one country must not affect other countries.
 
-21. **No services call SMS/push providers directly** — all notification sending goes through
+23. **No services call SMS/push providers directly** — all notification sending goes through
     `NotificationService` in notification-service. Other services publish Kafka events only.
 
 ---
@@ -761,6 +831,38 @@ to build each service, refer to the **"Implementation Steps"** section in that s
 - [ ] Admin endpoints across all services (`X-User-Role == ADMIN` check)
 - [ ] Prometheus metrics exposed at `/actuator/prometheus`
 - [ ] Zipkin tracing configured
+
+### Phase 7 — Flat Fee Revenue Model
+- [ ] `common-lib` — add enums: `ServiceCategory` (RIDE, CHARTER, CARGO), `RevenueModel`
+      (SUBSCRIPTION, FLAT_FEE), `BookingType` (ON_DEMAND, SCHEDULED), `QualityTier`
+      (STANDARD, LUXURY), `TripDirection` (ONE_WAY, ROUND_TRIP). Expand `VehicleType` enum
+      with charter and cargo types. Add new Kafka events.
+- [ ] `country-config-service` — flat fee percentage config per country per service category,
+      new vehicle type configs for charter/cargo with quality tiers
+- [ ] `subscription-service` — support flat fee as alternative to subscription. Driver
+      chooses revenue model. Ride drivers can switch monthly.
+- [ ] `driver-service` — `revenueModel` field on driver profile, service category registration,
+      vehicle quality tier. Go-online validation: subscription OR flat fee required.
+- [ ] `payment-service` — flat fee deduction from driver wallet on trip completion for
+      flat-fee drivers. Calculate Twende's cut = fare * flatFeePercentage.
+
+### Phase 8 — Charter Transport
+- [ ] `ride-service` — add `serviceCategory`, `bookingType`, `scheduledPickupAt`,
+      `tripDirection`, `qualityTier`, `returnPickupAt` fields. Support scheduled bookings.
+- [ ] `pricing-service` — charter pricing: base + distance + duration + vehicle class +
+      quality tier. Round trip = 2x distance pricing with discount.
+- [ ] `matching-service` — scheduled matching mode: drivers browse available charter bookings
+      and accept (marketplace model, not broadcast). Filter by vehicle type + quality tier.
+- [ ] Charter vehicle type seed data for Tanzania (minibus standard/luxury, bus standard/luxury)
+- [ ] Notification templates for booking confirmations, reminders, driver acceptance
+
+### Phase 9 — Cargo Transport
+- [ ] `ride-service` — add `cargoDescription`, `estimatedWeightKg`, `estimatedVolumeM3` fields
+      for cargo bookings.
+- [ ] `pricing-service` — cargo pricing: base + distance + weight tier + vehicle class.
+- [ ] `matching-service` — cargo matching: same marketplace model as charter.
+- [ ] Cargo vehicle type seed data for Tanzania (cargo tuk-tuk, light/medium/heavy truck)
+- [ ] Notification templates for cargo booking confirmations
 
 ---
 

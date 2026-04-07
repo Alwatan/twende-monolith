@@ -270,6 +270,36 @@ void givenRestrictedZone_whenEstimate_thenRequestRejected() { ... }
 
 ---
 
+## Charter, Cargo & Flat Fee Expansion (Phase 7-9)
+
+### Charter Pricing (Phase 8)
+
+- Formula: `baseFare + (distanceKm * perKm) + (estimatedHours * perHour) + qualityTierSurcharge`
+- Round trip: 2x distance component with a configurable discount (e.g. 10% off return leg)
+- `qualityTierSurcharge` comes from `VehicleTypeConfig` -- LUXURY vehicles have a fixed surcharge over STANDARD
+- `perHour` rate is a new pricing parameter in `VehicleTypeConfig` for charter vehicle types
+
+### Cargo Pricing (Phase 8)
+
+- Formula: `baseFare + (distanceKm * perKm) + weightTierSurcharge`
+- Weight tiers configured per cargo vehicle type in country-config-service (e.g. 0-500kg = 0, 500-1000kg = +5000 TZS, etc.)
+- Volume is informational only (not priced), used for driver decision-making
+
+### Flat Fee Calculation (Phase 7)
+
+- After calculating the fare, apply flat fee split: `fare * flatFeePercentage = Twende's cut`
+- Driver's earnings = `fare - flatFee`
+- Flat fee percentage comes from country-config-service per country per `ServiceCategory`
+- Pricing service returns both `totalFare` and `twendeFee` in the response so downstream services know the split
+- Only applies to flat-fee drivers; subscription drivers keep 100% (no fee calculated)
+
+### New Estimate/Calculate Fields
+
+- `EstimateRequest` gains: `serviceCategory`, `bookingType`, `qualityTier`, `estimatedWeightKg`, `tripDirection`, `estimatedHours` (charter), `driverRevenueModel`
+- `EstimateResponse` gains: `twendeFee`, `driverEarnings`, `fareBreakdown.charterHourlyFare`, `fareBreakdown.weightSurcharge`, `fareBreakdown.qualityTierSurcharge`
+
+---
+
 ## Implementation Steps
 
 Complete these in order. Each step should compile and pass tests before moving to the next.

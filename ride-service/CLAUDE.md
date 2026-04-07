@@ -836,6 +836,39 @@ void givenApplicableFreeRideOffer_whenRiderCreatesRide_thenRideMarkedFreeAndOffe
 
 ---
 
+## Charter, Cargo & Flat Fee Expansion (Phase 7-9)
+
+### New Ride Entity Fields (Phase 7)
+
+- `serviceCategory` (`VARCHAR(20)`, default `RIDE`) -- `RIDE`, `CHARTER`, or `CARGO`
+- `bookingType` (`VARCHAR(20)`, default `ON_DEMAND`) -- `ON_DEMAND` or `SCHEDULED`
+- `scheduledPickupAt` (`TIMESTAMPTZ`, nullable) -- required for charter/cargo, null for on-demand rides
+- `tripDirection` (`VARCHAR(20)`, nullable) -- `ONE_WAY` or `ROUND_TRIP` (charter only)
+- `qualityTier` (`VARCHAR(20)`, nullable) -- `STANDARD` or `LUXURY` (charter only)
+- `returnPickupAt` (`TIMESTAMPTZ`, nullable) -- for round trip charters, when the return leg starts
+- `cargoDescription` (`TEXT`, nullable) -- what is being transported (cargo only)
+- `estimatedWeightKg` (`NUMERIC(10,2)`, nullable) -- cargo weight estimate
+- `estimatedVolumeM3` (`NUMERIC(10,2)`, nullable) -- cargo volume estimate
+- `paymentTiming` (`VARCHAR(20)`, default `AT_END`) -- `AT_END` (rides), `UPFRONT` or `ON_COMPLETION` (charter/cargo)
+
+### Backward Compatibility
+
+- Existing ride flow is unchanged: defaults to `serviceCategory=RIDE`, `bookingType=ON_DEMAND`
+- All new fields are nullable or have defaults -- no breaking changes to existing ride creation
+
+### Charter/Cargo Booking Differences
+
+- `scheduledPickupAt` is required for `SCHEDULED` bookings, validated in `RideService.createRide()`
+- Charter/cargo bookings publish `BookingRequestedEvent` (not `RideRequestedEvent`) to trigger marketplace matching instead of broadcast
+- Cash payment timing: rides = at end of trip, charter/cargo = upfront before trip or upon completion (configurable per booking via `paymentTiming`)
+
+### New Flyway Migration
+
+- Add columns to `rides` table with defaults and nullable constraints
+- No data migration needed -- existing rows get defaults
+
+---
+
 ## Implementation Steps
 
 Complete these in order. Each step should compile and pass existing tests before moving on.

@@ -409,6 +409,35 @@ void givenSelcomFailure_whenSubscriptionPayment_thenTransactionMarkedProcessingA
 
 ---
 
+## Charter, Cargo & Flat Fee Expansion (Phase 7-9)
+
+### Flat Fee Deduction (Phase 7)
+
+- On trip completion for flat-fee drivers: deduct Twende's cut from driver wallet
+- `walletService.debitFlatFee(driverId, fare, flatFeePercentage)` -- creates a `DEBIT` wallet entry with type `FLAT_FEE_DEDUCTION`
+- Flat fee percentage comes from subscription-service (which reads from `flat_fee_configs`)
+- Publishes `FlatFeeDeductedEvent` to Kafka after successful deduction
+
+### New Transaction Type
+
+- Add `FLAT_FEE_DEDUCTION` to `payment_type` enum -- tracks Twende's cut from flat-fee driver trips
+- Transaction record: `payer_id = driverId`, `payee_id = null` (Twende), `amount = fee amount`
+
+### Charter/Cargo Cash Flow (Phase 8)
+
+- Same as ride cash flow: driver declares cash received via `POST /api/v1/payments/{rideId}/cash-declare`
+- After cash declaration, if driver is on flat-fee model, flat fee is automatically deducted from wallet
+- If wallet balance is insufficient for flat fee deduction, the debit is recorded as pending and deducted from future earnings
+
+### Updated Kafka Consumer
+
+- `twende.rides.completed` handler checks driver's revenue model (from event payload)
+- For `SUBSCRIPTION` drivers: existing behavior (no deduction, driver keeps 100%)
+- For `FLAT_FEE` drivers: debit flat fee from wallet, create `FLAT_FEE_DEDUCTION` transaction
+- Free loyalty rides: Twende still credits driver wallet with full fare regardless of revenue model
+
+---
+
 ## Implementation Steps
 
 - [ ] 1. `application.yml` -- port 8089, datasource `twende_payments`, Redis, Kafka (`consumer.group-id: payment-service`), Selcom config (`base-url`, `api-key`, `api-secret`), country-config-service URL

@@ -513,6 +513,38 @@ void givenNoActiveSubscription_whenGoOnline_thenThrowsPaymentRequired() { ... }
 
 ---
 
+## Charter, Cargo & Flat Fee Expansion (Phase 7-9)
+
+### New DriverProfile Fields (Phase 7)
+
+- `revenueModel` (`VARCHAR(20)`, default `SUBSCRIPTION`) -- `SUBSCRIPTION` or `FLAT_FEE`
+- `serviceCategories` -- set of `ServiceCategory` values the driver operates in (`RIDE`, `CHARTER`, `CARGO`). Stored as a join table or array column
+- `qualityTier` (`VARCHAR(20)`, nullable) -- `STANDARD` or `LUXURY`, only for charter vehicle drivers
+
+### Service Category Registration
+
+- Drivers register which service categories they operate in during onboarding or via profile update
+- A driver can operate in multiple categories (e.g. RIDE + CHARTER) if they have appropriate vehicles
+- Category assignment is validated against registered vehicles (e.g. cannot register for CARGO without a cargo vehicle)
+
+### Updated Go-Online Validation (Phase 7)
+
+- For `RIDE` category: need active subscription OR flat fee registration (calls updated `hasActiveRevenueModel()` on subscription-service)
+- For `CHARTER` and `CARGO` categories: always flat fee -- no subscription option. Validate driver has flat fee registration
+- Vehicle validation: driver must have an active vehicle matching the service category they are going online for
+
+### Vehicle Registration Extensions (Phase 8)
+
+- Cargo vehicles: add `maxWeightKg` (`NUMERIC(10,2)`) to `driver_vehicles` -- maximum cargo weight capacity
+- Charter vehicles: add `qualityTier` (`VARCHAR(20)`) and `passengerCapacity` (`INT`) to `driver_vehicles`
+- Vehicle type validation: cargo vehicle types (`CARGO_TUKTUK`, `TRUCK_*`) require `maxWeightKg`; charter types (`MINIBUS_*`, `BUS_*`) require `qualityTier` and `passengerCapacity`
+
+### New Internal Endpoint
+
+- `GET /internal/drivers/{id}/service-categories` -- returns driver's registered service categories, revenue model, and quality tier (used by matching-service for marketplace filtering)
+
+---
+
 ## Implementation Steps
 
 Work through these in order. Do not skip ahead.

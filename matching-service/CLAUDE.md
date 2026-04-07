@@ -827,6 +827,35 @@ void givenRideCancelled_whenCleanupRuns_thenAllRedisKeysDeleted() { ... }
 
 ---
 
+## Charter, Cargo & Flat Fee Expansion (Phase 7-9)
+
+### Rides: No Change (Phase 7)
+
+- On-demand ride matching continues to use the existing broadcast-and-accept model
+- No changes to the broadcast, scoring, accept race, or expansion scheduler for `serviceCategory=RIDE`
+
+### Charter & Cargo: Marketplace Model (Phase 8)
+
+- Charter and cargo bookings use a **marketplace model**, not broadcast-and-accept
+- Bookings are listed in a marketplace feed that drivers can browse
+- Drivers filter by: `serviceCategory`, `vehicleType`, `qualityTier`, `scheduledPickupAt` range
+- Driver sends an acceptance request (not an instant accept) -- customer confirms which driver to use
+- No broadcast push notifications for scheduled bookings -- drivers proactively browse
+- Redis keys for marketplace: `marketplace:{countryCode}:{serviceCategory}:{vehicleType}` (sorted set by scheduledPickupAt)
+
+### Matching Filters (Phase 8)
+
+- New filter dimensions: `serviceCategory`, `qualityTier`, `scheduledPickupAt` range (e.g. "bookings departing in next 48 hours")
+- Driver eligibility: must have matching `serviceCategory` in their registered categories, correct vehicle type, and correct quality tier (for charter)
+
+### New Endpoints (Phase 8)
+
+- `GET /api/v1/marketplace/bookings` -- drivers browse available charter/cargo bookings (filtered by vehicle type, category, date range)
+- `POST /api/v1/marketplace/bookings/{id}/request` -- driver requests to accept a booking
+- `POST /api/v1/marketplace/bookings/{id}/confirm/{driverId}` -- customer confirms a driver (internal, called by ride-service)
+
+---
+
 ## Implementation Steps
 
 Complete these in order. Each step should compile and pass existing tests before moving on.

@@ -509,6 +509,33 @@ logging:
 
 ---
 
+## Charter, Cargo & Flat Fee Expansion (Phase 7-9)
+
+### Flat Fee Configuration (Phase 7)
+
+- New table or JSONB field: `flat_fee_percentage` per country per `ServiceCategory`
+  - Example: TZ RIDE 15%, TZ CHARTER 12%, TZ CARGO 10%
+- Flat fee percentages are admin-configurable and cached in Redis alongside country config
+
+### New Vehicle Type Configs (Phase 8)
+
+- Charter vehicle type configs: add `quality_tier` column (`STANDARD` / `LUXURY`) to `vehicle_type_configs` -- nullable, only set for charter vehicles
+- Cargo vehicle type configs: add `max_weight_kg` column (`NUMERIC(10,2)`) -- nullable, only set for cargo vehicles
+- Seed Tanzania charter vehicles: `MINIBUS_STANDARD`, `MINIBUS_LUXURY`, `BUS_STANDARD`, `BUS_LUXURY` with per-km, per-hour, and base fare pricing
+- Seed Tanzania cargo vehicles: `CARGO_TUKTUK`, `TRUCK_LIGHT`, `TRUCK_MEDIUM`, `TRUCK_HEAVY` with weight tier pricing
+
+### Feature Flags (Phase 7)
+
+- Add `"charterEnabled": false` and `"cargoEnabled": false` to `country_configs.features` JSONB
+- Services check these flags before accepting charter/cargo bookings for a country
+- Tanzania launch: rides only initially; charter and cargo enabled via flag toggle
+
+### Migration
+
+- New Flyway migration for flat fee config table/columns, vehicle type config columns (`quality_tier`, `max_weight_kg`), and feature flag defaults
+
+---
+
 ## Implementation Steps
 
 Work through these in order. Do not skip ahead.

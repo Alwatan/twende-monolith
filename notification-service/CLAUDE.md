@@ -608,6 +608,27 @@ void givenUnknownLocale_whenResolveTemplate_thenFallsBackToEnglish() { ... }
 
 ---
 
+## Charter, Cargo & Flat Fee Expansion (Phase 7-9)
+
+### New Notification Templates (Phase 8)
+
+- `booking.confirmed` -- sent to customer when a charter/cargo booking is created and confirmed
+- `booking.reminder` -- sent to both customer and driver 24 hours before `scheduledPickupAt`
+- `booking.driver.accepted` -- sent to customer when a driver requests to accept their charter/cargo booking
+- `charter.completed` -- sent to customer on charter trip completion (includes fare, duration, distance)
+- `cargo.completed` -- sent to customer on cargo delivery completion (includes fare, weight, distance)
+
+### New Kafka Event Handlers (Phase 8)
+
+- `BookingNotificationHandler` -- listens for `BookingRequestedEvent` and `BookingCompletedEvent`
+- `BookingReminderScheduler` -- `@Scheduled` job that queries upcoming bookings (24h window) and sends reminder push notifications
+
+### Template Seeding
+
+- Add Swahili (`sw-TZ`) and English (`en`) templates for all new template keys in a new Flyway migration
+
+---
+
 ## Implementation Steps
 
 - [ ] 1. `application.yml` -- port 8091, datasource `twende_notifications`, Kafka (`consumer.group-id: notification-service-group`), Firebase config (`service-account-json`), Africa's Talking config (`api-key`, `username`, `sender-id`, `base-url`), SendGrid config (`api-key`, `from-email`), `SMS_DEV_MODE=true`, `PUSH_DEV_MODE=false`, country-config-service URL

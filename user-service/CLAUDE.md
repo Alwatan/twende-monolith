@@ -565,6 +565,25 @@ java -jar user-service/target/user-service-*.jar
 
 ---
 
+## Charter, Cargo & Flat Fee Expansion (Phase 7-9)
+
+### User Roles in Context (Phase 7)
+
+- Users can act as different roles depending on the service category:
+  - **Riders** -- book on-demand rides (`serviceCategory=RIDE`)
+  - **Organizers** -- book charter transport (`serviceCategory=CHARTER`)
+  - **Shippers** -- book cargo transport (`serviceCategory=CARGO`)
+- No schema change needed on `UserProfile` -- the `serviceCategory` is a property of the booking (ride entity), not the user profile
+- A single user account can create bookings across all service categories
+
+### No Breaking Changes
+
+- Existing user profile endpoints remain unchanged
+- Ride history endpoint (`GET /api/v1/users/me/ride-history`) will include charter and cargo bookings alongside rides -- differentiated by `serviceCategory` in the response
+- No new user-service endpoints required for Phase 7-9
+
+---
+
 ## Implementation Steps
 
 Work through these in order. Do not skip ahead.
