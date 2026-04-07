@@ -28,9 +28,7 @@ class UserRegisteredConsumerTest {
     @Test
     void givenRiderRegistration_whenConsumed_thenProfileCreated() {
         UUID userId = UUID.randomUUID();
-        UserRegisteredEvent event =
-                new UserRegisteredEvent(userId, "Jane Doe", "+255712345678", UserRole.RIDER);
-        event.setCountryCode("TZ");
+        UserRegisteredEvent event = createEvent(userId, "Jane Doe", UserRole.RIDER);
 
         when(userProfileRepository.existsById(userId)).thenReturn(false);
 
@@ -46,10 +44,7 @@ class UserRegisteredConsumerTest {
 
     @Test
     void givenDriverRegistration_whenConsumed_thenIgnored() {
-        UserRegisteredEvent event =
-                new UserRegisteredEvent(
-                        UUID.randomUUID(), "John Driver", "+255712345678", UserRole.DRIVER);
-        event.setCountryCode("TZ");
+        UserRegisteredEvent event = createEvent(UUID.randomUUID(), "John Driver", UserRole.DRIVER);
 
         consumer.onUserRegistered(event);
 
@@ -59,9 +54,7 @@ class UserRegisteredConsumerTest {
     @Test
     void givenDuplicateRegistration_whenConsumed_thenNoError() {
         UUID userId = UUID.randomUUID();
-        UserRegisteredEvent event =
-                new UserRegisteredEvent(userId, "Jane Doe", "+255712345678", UserRole.RIDER);
-        event.setCountryCode("TZ");
+        UserRegisteredEvent event = createEvent(userId, "Jane Doe", UserRole.RIDER);
 
         when(userProfileRepository.existsById(userId)).thenReturn(true);
 
@@ -72,13 +65,20 @@ class UserRegisteredConsumerTest {
 
     @Test
     void givenAdminRegistration_whenConsumed_thenIgnored() {
-        UserRegisteredEvent event =
-                new UserRegisteredEvent(
-                        UUID.randomUUID(), "Admin User", "+255712345678", UserRole.ADMIN);
-        event.setCountryCode("TZ");
+        UserRegisteredEvent event = createEvent(UUID.randomUUID(), "Admin User", UserRole.ADMIN);
 
         consumer.onUserRegistered(event);
 
         verify(entityManager, never()).merge(any());
+    }
+
+    private UserRegisteredEvent createEvent(UUID userId, String fullName, UserRole role) {
+        UserRegisteredEvent event = new UserRegisteredEvent();
+        event.setUserId(userId);
+        event.setFullName(fullName);
+        event.setPhoneNumber("+255712345678");
+        event.setRole(role);
+        event.setCountryCode("TZ");
+        return event;
     }
 }
