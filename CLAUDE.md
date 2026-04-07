@@ -916,29 +916,60 @@ twende:
 
 ## 18. Dockerfile Standard (All Services)
 
-Every service (except `common-lib`) must have a `Dockerfile` in its module root. Use this
-multi-stage template:
+Every service (except `common-lib`) must have a `Dockerfile` in its module root.
+
+### Standard Dockerfile (services that depend on common-lib)
 
 ```dockerfile
 # Stage 1: Build
 FROM eclipse-temurin:21-jdk-alpine AS build
-WORKDIR /app
-COPY ../pom.xml ../pom.xml
-COPY ../common-lib ../common-lib
+WORKDIR /workspace
 COPY pom.xml .
-COPY src src
-RUN cd .. && ./mvnw -pl common-lib install -DskipTests -q \
+COPY common-lib common-lib
+COPY {service-name} {service-name}
+COPY mvnw .
+COPY .mvn .mvn
+RUN chmod +x mvnw \
+    && ./mvnw -pl common-lib install -DskipTests -q \
     && ./mvnw -pl {service-name} package -DskipTests -q
 
 # Stage 2: Run
 FROM eclipse-temurin:21-jre-alpine
 RUN addgroup -S twende && adduser -S twende -G twende
 WORKDIR /app
-COPY --from=build /app/target/{service-name}-*.jar app.jar
+COPY --from=build /workspace/{service-name}/target/{service-name}-*.jar app.jar
 USER twende
 EXPOSE {port}
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
   CMD wget -qO- http://localhost:{port}/actuator/health || exit 1
+ENTRYPOINT ["java", "-jar", "app.jar"]
+```
+
+### Gateway Dockerfile (no common-lib dependency)
+
+The `api-gateway` does NOT depend on `common-lib` (WebFlux vs WebMvc conflict), so its
+Dockerfile is simpler:
+
+```dockerfile
+# Stage 1: Build
+FROM eclipse-temurin:21-jdk-alpine AS build
+WORKDIR /workspace
+COPY pom.xml .
+COPY api-gateway api-gateway
+COPY mvnw .
+COPY .mvn .mvn
+RUN chmod +x mvnw \
+    && ./mvnw -pl api-gateway package -DskipTests -q
+
+# Stage 2: Run
+FROM eclipse-temurin:21-jre-alpine
+RUN addgroup -S twende && adduser -S twende -G twende
+WORKDIR /app
+COPY --from=build /workspace/api-gateway/target/api-gateway-*.jar app.jar
+USER twende
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
+  CMD wget -qO- http://localhost:8080/actuator/health || exit 1
 ENTRYPOINT ["java", "-jar", "app.jar"]
 ```
 
@@ -947,6 +978,7 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
 - Uses Alpine JRE for minimal image size
 - Health check via actuator endpoint
 - All config via environment variables (no secrets in image)
+- Build context is the monorepo root (not the service directory)
 - Each service's Implementation Steps must include a Dockerfile step
 
 ### OpenAPI / Swagger (All REST Services)
