@@ -51,4 +51,4 @@ management:
 
 logging:
   level:
-    com.twende.gateway: DEBUG
+    tz.co.twende.gateway: DEBUG

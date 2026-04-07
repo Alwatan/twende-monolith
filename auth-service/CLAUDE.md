@@ -25,7 +25,7 @@ built on **Spring Authorization Server** and handles:
 ## 2. Package Structure
 
 ```
-com.twende.auth
+tz.co.twende.auth
 ├── AuthServiceApplication.java
 ├── config/
 │   ├── AuthServerConfig.java         # OAuth2 Authorization Server + JWK source

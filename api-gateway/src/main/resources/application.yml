@@ -244,6 +244,6 @@ management:
 
 logging:
   level:
-    com.twende.gateway: DEBUG
+    tz.co.twende.gateway: DEBUG
     org.springframework.cloud.gateway: INFO
     org.springframework.security: WARN

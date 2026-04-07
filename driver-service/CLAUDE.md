@@ -12,8 +12,8 @@ rule before allowing a driver to come online.
 
 **Port:** 8084
 **Database:** `twende_drivers`
-**Base package:** `com.twende.driver`
-**Shared library:** `com.twende.common` (common-lib dependency)
+**Base package:** `tz.co.twende.driver`
+**Shared library:** `tz.co.twende.common` (common-lib dependency)
 
 This is a standalone Spring Boot microservice in the Twende monorepo. It does NOT use Eureka,
 Feign, or Spring Cloud. Inter-service communication uses Spring `RestClient` with direct URLs
@@ -24,7 +24,7 @@ resolved from configuration. Authentication context arrives via gateway-injected
 ## 2. Package Structure
 
 ```
-com.twende.driver
+tz.co.twende.driver
 ├── DriverServiceApplication.java
 ├── config/
 │   ├── RedisConfig.java
@@ -442,7 +442,7 @@ spring:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
-        spring.json.trusted.packages: com.twende.*
+        spring.json.trusted.packages: tz.co.twende.*
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
@@ -474,7 +474,7 @@ twende:
 
 logging:
   level:
-    com.twende: DEBUG
+    tz.co.twende: DEBUG
     org.springframework.kafka: WARN
 ```
 

@@ -12,7 +12,7 @@ by all Twende microservices. It provides:
 - Custom exception hierarchy + auto-configured global exception handler
 - Utility classes (phone formatting, currency formatting, OTP generation, pagination)
 
-**GroupId:** `com.twende`
+**GroupId:** `tz.co.twende`
 **ArtifactId:** `common-lib`
 **Packaging:** `jar` (plain JAR -- do NOT include `spring-boot-maven-plugin`)
 
@@ -23,7 +23,7 @@ by all Twende microservices. It provides:
 ## Package Structure
 
 ```
-com.twende.common
+tz.co.twende.common
 ├── config/
 │   └── CommonAutoConfiguration.java       # Spring Boot auto-config (registers GlobalExceptionHandler)
 ├── entity/
@@ -93,7 +93,7 @@ com.twende.common
 ```xml
 <project>
     <parent>
-        <groupId>com.twende</groupId>
+        <groupId>tz.co.twende</groupId>
         <artifactId>twende-parent</artifactId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
@@ -327,7 +327,7 @@ classpath.
 **Registration file:** `src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`
 
 ```
-com.twende.common.config.CommonAutoConfiguration
+tz.co.twende.common.config.CommonAutoConfiguration
 ```
 
 ```java
@@ -524,7 +524,7 @@ public abstract class KafkaEvent {
 }
 ```
 
-### Ride Events (`com.twende.common.event.ride`)
+### Ride Events (`tz.co.twende.common.event.ride`)
 
 #### RideRequestedEvent
 
@@ -590,7 +590,7 @@ public class RideFareBoostedEvent extends KafkaEvent {
 }
 ```
 
-### Driver Events (`com.twende.common.event.driver`)
+### Driver Events (`tz.co.twende.common.event.driver`)
 
 #### DriverMatchedEvent
 
@@ -665,7 +665,7 @@ public class RideOfferAcceptedEvent extends KafkaEvent {
 }
 ```
 
-### Payment Events (`com.twende.common.event.payment`)
+### Payment Events (`tz.co.twende.common.event.payment`)
 
 #### PaymentInitiatedEvent
 
@@ -692,7 +692,7 @@ public class PaymentCompletedEvent extends KafkaEvent {
 }
 ```
 
-### Subscription Events (`com.twende.common.event.subscription`)
+### Subscription Events (`tz.co.twende.common.event.subscription`)
 
 #### SubscriptionActivatedEvent
 
@@ -716,7 +716,7 @@ public class SubscriptionExpiredEvent extends KafkaEvent {
 }
 ```
 
-### User Events (`com.twende.common.event.user`)
+### User Events (`tz.co.twende.common.event.user`)
 
 #### UserRegisteredEvent
 
@@ -730,7 +730,7 @@ public class UserRegisteredEvent extends KafkaEvent {
 }
 ```
 
-### Notification Events (`com.twende.common.event.notification`)
+### Notification Events (`tz.co.twende.common.event.notification`)
 
 #### SendNotificationEvent
 
@@ -748,7 +748,7 @@ public class SendNotificationEvent extends KafkaEvent {
 }
 ```
 
-### Loyalty Events (`com.twende.common.event.loyalty`)
+### Loyalty Events (`tz.co.twende.common.event.loyalty`)
 
 #### FreeRideOfferEarnedEvent
 
@@ -935,7 +935,7 @@ public ResponseEntity<ApiResponse<...>> create(@Valid @RequestBody CreateRideReq
 - Consuming services declare this as a dependency:
   ```xml
   <dependency>
-      <groupId>com.twende</groupId>
+      <groupId>tz.co.twende</groupId>
       <artifactId>common-lib</artifactId>
       <version>${project.version}</version>
   </dependency>
@@ -972,9 +972,9 @@ Add to existing `VehicleType` enum:
 
 ### New Kafka Events (Phase 7)
 
-- `BookingRequestedEvent` (`com.twende.common.event.ride`) -- published when a charter or cargo booking is created. Includes `serviceCategory`, `bookingType`, `scheduledPickupAt`, `qualityTier`, `weightTier` (cargo), `driverProvidesLoading` (cargo)
-- `BookingCompletedEvent` (`com.twende.common.event.ride`) -- published when a charter or cargo trip completes. Includes `serviceCategory`, final fare, cargo/charter-specific fields
-- `FlatFeeDeductedEvent` (`com.twende.common.event.payment`) -- published when Twende's flat fee cut is deducted from a driver's wallet. Includes `driverId`, `rideId`, `fareAmount`, `feePercentage`, `feeAmount`
+- `BookingRequestedEvent` (`tz.co.twende.common.event.ride`) -- published when a charter or cargo booking is created. Includes `serviceCategory`, `bookingType`, `scheduledPickupAt`, `qualityTier`, `weightTier` (cargo), `driverProvidesLoading` (cargo)
+- `BookingCompletedEvent` (`tz.co.twende.common.event.ride`) -- published when a charter or cargo trip completes. Includes `serviceCategory`, final fare, cargo/charter-specific fields
+- `FlatFeeDeductedEvent` (`tz.co.twende.common.event.payment`) -- published when Twende's flat fee cut is deducted from a driver's wallet. Includes `driverId`, `rideId`, `fareAmount`, `feePercentage`, `feeAmount`
 
 ---
 

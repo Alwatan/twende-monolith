@@ -13,8 +13,8 @@ absorbs the cost).
 
 **Port:** 8095
 **Database:** `twende_loyalty`
-**Base package:** `com.twende.loyalty`
-**Shared library:** `com.twende.common` (common-lib dependency)
+**Base package:** `tz.co.twende.loyalty`
+**Shared library:** `tz.co.twende.common` (common-lib dependency)
 
 This is a standalone Spring Boot microservice in the Twende monorepo. It does NOT use Eureka,
 Feign, or Spring Cloud. Inter-service communication uses Spring `RestClient` with direct URLs
@@ -25,7 +25,7 @@ resolved from configuration. Authentication context arrives via gateway-injected
 ## 2. Package Structure
 
 ```
-com.twende.loyalty
+tz.co.twende.loyalty
 ├── LoyaltyServiceApplication.java
 ├── config/
 │   ├── RedisConfig.java
@@ -440,7 +440,7 @@ spring:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
-        spring.json.trusted.packages: com.twende.*
+        spring.json.trusted.packages: tz.co.twende.*
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
@@ -456,7 +456,7 @@ management:
 
 logging:
   level:
-    com.twende: DEBUG
+    tz.co.twende: DEBUG
     org.springframework.kafka: WARN
 ```
 

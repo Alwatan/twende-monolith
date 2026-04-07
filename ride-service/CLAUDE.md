@@ -13,7 +13,7 @@
 | Artifact | `ride-service` |
 | Port | `8085` |
 | Database | `twende_rides` (PostgreSQL 16) |
-| Base package | `com.twende.ride` |
+| Base package | `tz.co.twende.ride` |
 | Parent POM | `twende-parent` |
 
 ---

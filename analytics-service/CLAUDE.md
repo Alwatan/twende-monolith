@@ -117,7 +117,7 @@ GET /api/v1/analytics/admin/countries/TZ
 ## 3. Package Structure
 
 ```
-com.twende.analytics
+tz.co.twende.analytics
 ├── AnalyticsServiceApplication.java
 ├── config/
 │   ├── KafkaConfig.java             # Consumer config for all platform events
@@ -402,7 +402,7 @@ spring:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
-        spring.json.trusted.packages: com.twende.*
+        spring.json.trusted.packages: tz.co.twende.*
 
 management:
   endpoints:
@@ -412,7 +412,7 @@ management:
 
 logging:
   level:
-    com.twende: DEBUG
+    tz.co.twende: DEBUG
     org.springframework.security: WARN
 ```
 

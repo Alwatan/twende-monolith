@@ -101,7 +101,7 @@ This is a lightweight response used by matching-service for match scoring. No
 ## 3. Package Structure
 
 ```
-com.twende.rating
+tz.co.twende.rating
 ├── RatingServiceApplication.java
 ├── config/
 │   ├── KafkaConfig.java             # Consumer config for ride events
@@ -381,7 +381,7 @@ spring:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
-        spring.json.trusted.packages: com.twende.*
+        spring.json.trusted.packages: tz.co.twende.*
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
@@ -398,7 +398,7 @@ twende:
 
 logging:
   level:
-    com.twende: DEBUG
+    tz.co.twende: DEBUG
     org.springframework.security: WARN
 ```
 

@@ -13,8 +13,8 @@
 | **Port** | 8087 |
 | **Database** | `twende_locations` |
 | **Artifact** | `location-service` |
-| **Base package** | `com.twende.location` |
-| **Scan packages** | `com.twende.location`, `com.twende.common` |
+| **Base package** | `tz.co.twende.location` |
+| **Scan packages** | `tz.co.twende.location`, `tz.co.twende.common` |
 
 ---
 
@@ -614,7 +614,7 @@ public ResponseEntity<ApiResponse<GeocodingResult>> geocode(
 ## 12. Package Structure
 
 ```
-com.twende.location
+tz.co.twende.location
 ├── LocationServiceApplication.java
 ├── config/
 │   ├── WebSocketConfig.java             # WebSocket endpoint registration

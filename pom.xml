@@ -12,7 +12,7 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.twende</groupId>
+    <groupId>tz.co.twende</groupId>
     <artifactId>twende-parent</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
@@ -88,7 +88,7 @@
             </dependency>
             <!-- Shared versions for child modules -->
             <dependency>
-                <groupId>com.twende</groupId>
+                <groupId>tz.co.twende</groupId>
                 <artifactId>common-lib</artifactId>
                 <version>${project.version}</version>
             </dependency>

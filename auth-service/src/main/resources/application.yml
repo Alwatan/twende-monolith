@@ -55,5 +55,5 @@ management:
 
 logging:
   level:
-    com.twende: DEBUG
+    tz.co.twende: DEBUG
     org.springframework.security: WARN

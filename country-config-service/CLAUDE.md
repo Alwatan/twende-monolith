@@ -46,7 +46,7 @@ It is a standalone Spring Boot application that other services call via REST.
 ## 3. Package Structure
 
 ```
-com.twende.countryconfig
+tz.co.twende.countryconfig
 ├── CountryConfigServiceApplication.java
 ├── config/
 │   ├── SecurityConfig.java           # OAuth2 resource server, public GETs, admin writes
@@ -475,7 +475,7 @@ management:
 
 logging:
   level:
-    com.twende: DEBUG
+    tz.co.twende: DEBUG
     org.springframework.security: WARN
 ```
 

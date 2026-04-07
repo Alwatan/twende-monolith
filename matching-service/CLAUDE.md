@@ -31,7 +31,7 @@ This model is the prerequisite for fare boost (rider increases offer), rejection
 ## 2. Package Structure
 
 ```
-com.twende.matching
+tz.co.twende.matching
 ├── MatchingServiceApplication.java
 ├── config/
 │   ├── SecurityConfig.java           # Resource server JWT validation
@@ -693,7 +693,7 @@ spring:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
-        spring.json.trusted.packages: com.twende.*
+        spring.json.trusted.packages: tz.co.twende.*
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer

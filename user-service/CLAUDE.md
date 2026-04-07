@@ -13,8 +13,8 @@ the rider's profile and app experience.
 
 - **Port:** 8083
 - **Database:** `twende_users` (PostgreSQL 16, Flyway-managed)
-- **Base package:** `com.twende.user`
-- **Scans:** `com.twende.user` + `com.twende.common` (from common-lib)
+- **Base package:** `tz.co.twende.user`
+- **Scans:** `tz.co.twende.user` + `tz.co.twende.common` (from common-lib)
 
 The user ID is always the **same UUID** as the corresponding `AuthUser` in auth-service.
 It is never generated here -- it comes from the `UserRegisteredEvent` Kafka message.
@@ -24,7 +24,7 @@ It is never generated here -- it comes from the `UserRegisteredEvent` Kafka mess
 ## 2. Package Structure
 
 ```
-com.twende.user
+tz.co.twende.user
 ├── UserServiceApplication.java
 ├── config/
 │   ├── KafkaConfig.java              # Consumer + producer factory beans
@@ -377,7 +377,7 @@ spring:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
-        spring.json.trusted.packages: "com.twende.*"
+        spring.json.trusted.packages: "tz.co.twende.*"
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
@@ -398,7 +398,7 @@ twende:
 
 logging:
   level:
-    com.twende: DEBUG
+    tz.co.twende: DEBUG
     org.springframework.kafka: WARN
 ```
 

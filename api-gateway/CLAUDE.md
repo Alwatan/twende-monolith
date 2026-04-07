@@ -72,7 +72,7 @@ Built on **Spring Cloud Gateway** (reactive / WebFlux). It handles:
 ## 4. Package Structure
 
 ```
-com.twende.gateway
+tz.co.twende.gateway
 ├── GatewayApplication.java
 ├── config/
 │   ├── GatewayConfig.java           # Route definitions (Java DSL or YAML supplement)
@@ -510,7 +510,7 @@ management:
 
 logging:
   level:
-    com.twende.gateway: DEBUG
+    tz.co.twende.gateway: DEBUG
     org.springframework.cloud.gateway: INFO
     org.springframework.security: WARN
 ```
@@ -571,7 +571,7 @@ set by the AuthFilter. They do NOT re-validate JWTs. This means:
 ### No common-lib Dependency
 This module is WebFlux-based. The `common-lib` module uses Spring MVC (`spring-boot-starter-web`).
 Mixing reactive and servlet stacks causes `BeanCreationException` at startup. If you need a
-shared type (enum, DTO, constant), copy it into this module under `com.twende.gateway.shared/`.
+shared type (enum, DTO, constant), copy it into this module under `tz.co.twende.gateway.shared/`.
 Do not add `common-lib` to `pom.xml`.
 
 ### Testing
