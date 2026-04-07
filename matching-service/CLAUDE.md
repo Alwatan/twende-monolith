@@ -845,8 +845,10 @@ void givenRideCancelled_whenCleanupRuns_thenAllRedisKeysDeleted() { ... }
 
 ### Matching Filters (Phase 8)
 
-- New filter dimensions: `serviceCategory`, `qualityTier`, `scheduledPickupAt` range (e.g. "bookings departing in next 48 hours")
+- New filter dimensions: `serviceCategory`, `qualityTier`, `weightTier` (cargo), `scheduledPickupAt` range (e.g. "bookings departing in next 48 hours")
 - Driver eligibility: must have matching `serviceCategory` in their registered categories, correct vehicle type, and correct quality tier (for charter)
+- Cargo marketplace listings include `weightTier` so drivers can see what they are signing up for
+- Driver can see for cargo bookings: pickup/dropoff locations, distance, weight tier, whether loading help is requested (`driverProvidesLoading`), and the fixed price
 
 ### New Endpoints (Phase 8)
 

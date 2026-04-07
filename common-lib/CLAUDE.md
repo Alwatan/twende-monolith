@@ -956,6 +956,7 @@ public ResponseEntity<ApiResponse<...>> create(@Valid @RequestBody CreateRideReq
 - `BookingType`: `ON_DEMAND`, `SCHEDULED` -- immediate vs future pickup
 - `QualityTier`: `STANDARD`, `LUXURY` -- quality level for charter vehicles
 - `TripDirection`: `ONE_WAY`, `ROUND_TRIP` -- for charter bookings
+- `WeightTier`: `LIGHT`, `MEDIUM`, `FULL` -- cargo weight classification. LIGHT = small items/few boxes (e.g. moving a TV + bags), MEDIUM = partial truck load (e.g. office furniture), FULL = full truck capacity (e.g. full house move)
 
 ### New VehicleType Values (Phase 7)
 
@@ -971,7 +972,7 @@ Add to existing `VehicleType` enum:
 
 ### New Kafka Events (Phase 7)
 
-- `BookingRequestedEvent` (`com.twende.common.event.ride`) -- published when a charter or cargo booking is created. Includes `serviceCategory`, `bookingType`, `scheduledPickupAt`, `qualityTier`, cargo metadata
+- `BookingRequestedEvent` (`com.twende.common.event.ride`) -- published when a charter or cargo booking is created. Includes `serviceCategory`, `bookingType`, `scheduledPickupAt`, `qualityTier`, `weightTier` (cargo), `driverProvidesLoading` (cargo)
 - `BookingCompletedEvent` (`com.twende.common.event.ride`) -- published when a charter or cargo trip completes. Includes `serviceCategory`, final fare, cargo/charter-specific fields
 - `FlatFeeDeductedEvent` (`com.twende.common.event.payment`) -- published when Twende's flat fee cut is deducted from a driver's wallet. Includes `driverId`, `rideId`, `fareAmount`, `feePercentage`, `feeAmount`
 

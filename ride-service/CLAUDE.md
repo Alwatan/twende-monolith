@@ -847,8 +847,8 @@ void givenApplicableFreeRideOffer_whenRiderCreatesRide_thenRideMarkedFreeAndOffe
 - `qualityTier` (`VARCHAR(20)`, nullable) -- `STANDARD` or `LUXURY` (charter only)
 - `returnPickupAt` (`TIMESTAMPTZ`, nullable) -- for round trip charters, when the return leg starts
 - `cargoDescription` (`TEXT`, nullable) -- what is being transported (cargo only)
-- `estimatedWeightKg` (`NUMERIC(10,2)`, nullable) -- cargo weight estimate
-- `estimatedVolumeM3` (`NUMERIC(10,2)`, nullable) -- cargo volume estimate
+- `weightTier` (`VARCHAR(10)`, nullable) -- `LIGHT`, `MEDIUM`, or `FULL` (cargo only). LIGHT = small items/few boxes, MEDIUM = partial truck load, FULL = full truck capacity
+- `driverProvidesLoading` (`BOOLEAN DEFAULT FALSE`) -- driver has agreed to help with loading (arrangement and price agreed off-platform between customer and driver)
 - `paymentTiming` (`VARCHAR(20)`, default `AT_END`) -- `AT_END` (rides), `UPFRONT` or `ON_COMPLETION` (charter/cargo)
 
 ### Backward Compatibility
@@ -861,6 +861,17 @@ void givenApplicableFreeRideOffer_whenRiderCreatesRide_thenRideMarkedFreeAndOffe
 - `scheduledPickupAt` is required for `SCHEDULED` bookings, validated in `RideService.createRide()`
 - Charter/cargo bookings publish `BookingRequestedEvent` (not `RideRequestedEvent`) to trigger marketplace matching instead of broadcast
 - Cash payment timing: rides = at end of trip, charter/cargo = upfront before trip or upon completion (configurable per booking via `paymentTiming`)
+
+### Cargo Trip Lifecycle
+
+Cargo trips have additional statuses beyond the standard ride lifecycle:
+
+1. Driver arrives at pickup → marks **"Arrived"** (`DRIVER_ARRIVED`)
+2. Loading complete → Driver marks **"Loading complete, departing"** → OTP verified here (trip starts, `IN_PROGRESS`)
+3. Arrives at dropoff → marks **"Arrived at destination"** (new cargo sub-status)
+4. Unloading complete → marks **"Job complete"** (`COMPLETED`)
+
+Loading/unloading time is NOT billed. The cargo price is fixed at booking time based on distance and weight tier. If the customer misrepresented the weight tier (e.g. said LIGHT but load is actually FULL), the driver can refuse to load or negotiate on the spot — the platform price does not change based on actual loading/unloading duration.
 
 ### New Flyway Migration
 

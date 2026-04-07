@@ -53,7 +53,10 @@ earnings) or a **flat fee model** (Twende takes a percentage per trip).
 **Cargo:**
 - Pre-book cargo vehicles for specific dates/times
 - Vehicle types by capacity: Cargo Tuk-tuk, Light Truck, Medium Truck, Heavy Truck
-- Weight/volume-based pricing
+- Fixed pricing: baseFare + (distanceKm * perKm) + weightTierSurcharge — no time component
+- Weight tiers (LIGHT, MEDIUM, FULL) instead of exact kg — customer selects tier at booking
+- Customer knows exact price at booking time — price does not change regardless of loading duration
+- Loading/unloading is customer's responsibility; driver can optionally help (arranged off-platform)
 - One-way or round trip support
 - Drivers browse and accept available bookings (not broadcast matching)
 - Cash payment — upfront before trip or upon job completion

@@ -282,8 +282,14 @@ void givenRestrictedZone_whenEstimate_thenRequestRejected() { ... }
 ### Cargo Pricing (Phase 8)
 
 - Formula: `baseFare + (distanceKm * perKm) + weightTierSurcharge`
-- Weight tiers configured per cargo vehicle type in country-config-service (e.g. 0-500kg = 0, 500-1000kg = +5000 TZS, etc.)
-- Volume is informational only (not priced), used for driver decision-making
+- **NO time component** — avoids loading/unloading time disputes. Loading/unloading duration is never billed.
+- Price is **fixed at booking time** — does not change regardless of actual loading/unloading duration
+- Customer knows the exact price when they book
+- Weight tiers: `LIGHT` (small items, few boxes), `MEDIUM` (partial truck load), `FULL` (full truck capacity) — not exact kg
+- Weight tier surcharges configured per cargo vehicle type in country-config-service (e.g. CARGO_TUKTUK: LIGHT=0, MEDIUM=2000, FULL=5000 TZS)
+- If customer misrepresented weight tier, driver can refuse to load or negotiate on the spot — platform price unchanged
+
+Note: Charter pricing retains its time component (`estimatedHours * perHour`) since charter is about vehicle rental time and the driver is engaged for the full duration.
 
 ### Flat Fee Calculation (Phase 7)
 
@@ -295,7 +301,7 @@ void givenRestrictedZone_whenEstimate_thenRequestRejected() { ... }
 
 ### New Estimate/Calculate Fields
 
-- `EstimateRequest` gains: `serviceCategory`, `bookingType`, `qualityTier`, `estimatedWeightKg`, `tripDirection`, `estimatedHours` (charter), `driverRevenueModel`
+- `EstimateRequest` gains: `serviceCategory`, `bookingType`, `qualityTier`, `weightTier` (LIGHT/MEDIUM/FULL for cargo), `tripDirection`, `estimatedHours` (charter), `driverRevenueModel`
 - `EstimateResponse` gains: `twendeFee`, `driverEarnings`, `fareBreakdown.charterHourlyFare`, `fareBreakdown.weightSurcharge`, `fareBreakdown.qualityTierSurcharge`
 
 ---

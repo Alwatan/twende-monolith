@@ -520,9 +520,9 @@ logging:
 ### New Vehicle Type Configs (Phase 8)
 
 - Charter vehicle type configs: add `quality_tier` column (`STANDARD` / `LUXURY`) to `vehicle_type_configs` -- nullable, only set for charter vehicles
-- Cargo vehicle type configs: add `max_weight_kg` column (`NUMERIC(10,2)`) -- nullable, only set for cargo vehicles
+- Cargo vehicle type configs: add `weight_tier_surcharges JSONB` column to `vehicle_type_configs` -- nullable, only set for cargo vehicle types. Maps weight tier to surcharge amount, e.g. `{"LIGHT": 0, "MEDIUM": 2000, "FULL": 5000}`. Pricing service reads this to apply the correct surcharge based on customer-selected weight tier
 - Seed Tanzania charter vehicles: `MINIBUS_STANDARD`, `MINIBUS_LUXURY`, `BUS_STANDARD`, `BUS_LUXURY` with per-km, per-hour, and base fare pricing
-- Seed Tanzania cargo vehicles: `CARGO_TUKTUK`, `TRUCK_LIGHT`, `TRUCK_MEDIUM`, `TRUCK_HEAVY` with weight tier pricing
+- Seed Tanzania cargo vehicles: `CARGO_TUKTUK`, `TRUCK_LIGHT`, `TRUCK_MEDIUM`, `TRUCK_HEAVY` with base fare, per-km, and weight tier surcharges (no per-minute pricing for cargo)
 
 ### Feature Flags (Phase 7)
 
@@ -532,7 +532,7 @@ logging:
 
 ### Migration
 
-- New Flyway migration for flat fee config table/columns, vehicle type config columns (`quality_tier`, `max_weight_kg`), and feature flag defaults
+- New Flyway migration for flat fee config table/columns, vehicle type config columns (`quality_tier`, `weight_tier_surcharges JSONB`), and feature flag defaults
 
 ---
 

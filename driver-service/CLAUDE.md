@@ -535,9 +535,15 @@ void givenNoActiveSubscription_whenGoOnline_thenThrowsPaymentRequired() { ... }
 
 ### Vehicle Registration Extensions (Phase 8)
 
-- Cargo vehicles: add `maxWeightKg` (`NUMERIC(10,2)`) to `driver_vehicles` -- maximum cargo weight capacity
 - Charter vehicles: add `qualityTier` (`VARCHAR(20)`) and `passengerCapacity` (`INT`) to `driver_vehicles`
-- Vehicle type validation: cargo vehicle types (`CARGO_TUKTUK`, `TRUCK_*`) require `maxWeightKg`; charter types (`MINIBUS_*`, `BUS_*`) require `qualityTier` and `passengerCapacity`
+- Vehicle type validation: charter types (`MINIBUS_*`, `BUS_*`) require `qualityTier` and `passengerCapacity`
+
+### Cargo Driver Profile (Phase 8)
+
+- Cargo drivers can set `providesLoading: true` on their profile — indicates willingness to help with loading/unloading
+- This is a **preference flag**, not a guarantee — actual loading help arrangement and price are agreed off-platform between customer and driver
+- Twende does NOT manage loaders and does NOT track loader costs
+- Add `provides_loading BOOLEAN DEFAULT FALSE` to `drivers` table (nullable, only relevant for cargo drivers)
 
 ### New Internal Endpoint
 
