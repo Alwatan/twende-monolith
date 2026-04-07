@@ -26,199 +26,216 @@ spring:
                 name: default
                 fallbackUri: forward:/fallback
           routes:
-        - id: auth-service
-          uri: ${AUTH_SERVICE_URL:http://localhost:8081}
-          predicates:
-            - Path=/api/v1/auth/**, /oauth2/**
-          filters:
-            - name: RequestRateLimiter
-              args:
-                redis-rate-limiter.replenishRate: 10
-                redis-rate-limiter.burstCapacity: 20
-                key-resolver: "#{@ipKeyResolver}"
+            # ── Auth (public, strict rate limit on OTP) ──
+            - id: auth-otp
+              uri: ${AUTH_SERVICE_URL:http://localhost:8081}
+              predicates:
+                - Path=/api/v1/auth/otp/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    redis-rate-limiter.replenishRate: 3
+                    redis-rate-limiter.burstCapacity: 5
+                    key-resolver: "#{@ipKeyResolver}"
 
-        - id: user-service
-          uri: ${USER_SERVICE_URL:http://localhost:8082}
-          predicates:
-            - Path=/api/v1/users/**
-          filters:
-            - AuthFilter
-            - name: RequestRateLimiter
-              args:
-                redis-rate-limiter.replenishRate: 30
-                redis-rate-limiter.burstCapacity: 60
-                key-resolver: "#{@userKeyResolver}"
+            - id: auth-service
+              uri: ${AUTH_SERVICE_URL:http://localhost:8081}
+              predicates:
+                - Path=/api/v1/auth/**, /oauth2/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    redis-rate-limiter.replenishRate: 10
+                    redis-rate-limiter.burstCapacity: 20
+                    key-resolver: "#{@ipKeyResolver}"
 
-        - id: driver-service
-          uri: ${DRIVER_SERVICE_URL:http://localhost:8083}
-          predicates:
-            - Path=/api/v1/drivers/**
-          filters:
-            - AuthFilter
-            - name: RequestRateLimiter
-              args:
-                redis-rate-limiter.replenishRate: 30
-                redis-rate-limiter.burstCapacity: 60
-                key-resolver: "#{@userKeyResolver}"
+            # ── Country config (public, read-only) ──
+            - id: country-config-service
+              uri: ${COUNTRY_CONFIG_SERVICE_URL:http://localhost:8082}
+              predicates:
+                - Path=/api/v1/config/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    redis-rate-limiter.replenishRate: 10
+                    redis-rate-limiter.burstCapacity: 20
+                    key-resolver: "#{@ipKeyResolver}"
 
-        - id: ride-service
-          uri: ${RIDE_SERVICE_URL:http://localhost:8084}
-          predicates:
-            - Path=/api/v1/rides/**
-          filters:
-            - AuthFilter
-            - name: RequestRateLimiter
-              args:
-                redis-rate-limiter.replenishRate: 30
-                redis-rate-limiter.burstCapacity: 60
-                key-resolver: "#{@userKeyResolver}"
+            # ── Ride creation (strict — prevent spam requests) ──
+            - id: ride-service
+              uri: ${RIDE_SERVICE_URL:http://localhost:8085}
+              predicates:
+                - Path=/api/v1/rides/**
+              filters:
+                - AuthFilter
+                - name: RequestRateLimiter
+                  args:
+                    redis-rate-limiter.replenishRate: 5
+                    redis-rate-limiter.burstCapacity: 10
+                    key-resolver: "#{@userKeyResolver}"
 
-        - id: location-service
-          uri: ${LOCATION_SERVICE_URL:http://localhost:8085}
-          predicates:
-            - Path=/api/v1/locations/**
-          filters:
-            - AuthFilter
-            - name: RequestRateLimiter
-              args:
-                redis-rate-limiter.replenishRate: 30
-                redis-rate-limiter.burstCapacity: 60
-                key-resolver: "#{@userKeyResolver}"
+            # ── Location (higher limit — frequent GPS updates) ──
+            - id: location-service
+              uri: ${LOCATION_SERVICE_URL:http://localhost:8087}
+              predicates:
+                - Path=/api/v1/locations/**
+              filters:
+                - AuthFilter
+                - name: RequestRateLimiter
+                  args:
+                    redis-rate-limiter.replenishRate: 60
+                    redis-rate-limiter.burstCapacity: 120
+                    key-resolver: "#{@userKeyResolver}"
 
-        - id: location-ws
-          uri: ${LOCATION_SERVICE_WS_URL:ws://localhost:8085}
-          predicates:
-            - Path=/ws/**
-          # No AuthFilter — WS auth on handshake via ?token= query param
+            # ── WebSocket (no rate limit, no auth — handshake auth in location-service) ──
+            - id: location-ws
+              uri: ${LOCATION_SERVICE_WS_URL:ws://localhost:8087}
+              predicates:
+                - Path=/ws/**
 
-        - id: pricing-service
-          uri: ${PRICING_SERVICE_URL:http://localhost:8086}
-          predicates:
-            - Path=/api/v1/pricing/**
-          filters:
-            - AuthFilter
-            - name: RequestRateLimiter
-              args:
-                redis-rate-limiter.replenishRate: 30
-                redis-rate-limiter.burstCapacity: 60
-                key-resolver: "#{@userKeyResolver}"
+            # ── Standard authenticated routes (30 req/s) ──
+            - id: user-service
+              uri: ${USER_SERVICE_URL:http://localhost:8083}
+              predicates:
+                - Path=/api/v1/users/**
+              filters:
+                - AuthFilter
+                - name: RequestRateLimiter
+                  args:
+                    redis-rate-limiter.replenishRate: 30
+                    redis-rate-limiter.burstCapacity: 60
+                    key-resolver: "#{@userKeyResolver}"
 
-        - id: payment-service
-          uri: ${PAYMENT_SERVICE_URL:http://localhost:8087}
-          predicates:
-            - Path=/api/v1/payments/**
-          filters:
-            - AuthFilter
-            - name: RequestRateLimiter
-              args:
-                redis-rate-limiter.replenishRate: 30
-                redis-rate-limiter.burstCapacity: 60
-                key-resolver: "#{@userKeyResolver}"
+            - id: driver-service
+              uri: ${DRIVER_SERVICE_URL:http://localhost:8084}
+              predicates:
+                - Path=/api/v1/drivers/**
+              filters:
+                - AuthFilter
+                - name: RequestRateLimiter
+                  args:
+                    redis-rate-limiter.replenishRate: 30
+                    redis-rate-limiter.burstCapacity: 60
+                    key-resolver: "#{@userKeyResolver}"
 
-        - id: subscription-service
-          uri: ${SUBSCRIPTION_SERVICE_URL:http://localhost:8088}
-          predicates:
-            - Path=/api/v1/subscriptions/**
-          filters:
-            - AuthFilter
-            - name: RequestRateLimiter
-              args:
-                redis-rate-limiter.replenishRate: 30
-                redis-rate-limiter.burstCapacity: 60
-                key-resolver: "#{@userKeyResolver}"
+            - id: pricing-service
+              uri: ${PRICING_SERVICE_URL:http://localhost:8088}
+              predicates:
+                - Path=/api/v1/pricing/**
+              filters:
+                - AuthFilter
+                - name: RequestRateLimiter
+                  args:
+                    redis-rate-limiter.replenishRate: 30
+                    redis-rate-limiter.burstCapacity: 60
+                    key-resolver: "#{@userKeyResolver}"
 
-        - id: notification-service
-          uri: ${NOTIFICATION_SERVICE_URL:http://localhost:8089}
-          predicates:
-            - Path=/api/v1/notifications/**
-          filters:
-            - AuthFilter
-            - name: RequestRateLimiter
-              args:
-                redis-rate-limiter.replenishRate: 30
-                redis-rate-limiter.burstCapacity: 60
-                key-resolver: "#{@userKeyResolver}"
+            - id: payment-service
+              uri: ${PAYMENT_SERVICE_URL:http://localhost:8089}
+              predicates:
+                - Path=/api/v1/payments/**
+              filters:
+                - AuthFilter
+                - name: RequestRateLimiter
+                  args:
+                    redis-rate-limiter.replenishRate: 30
+                    redis-rate-limiter.burstCapacity: 60
+                    key-resolver: "#{@userKeyResolver}"
 
-        - id: loyalty-service
-          uri: ${LOYALTY_SERVICE_URL:http://localhost:8090}
-          predicates:
-            - Path=/api/v1/loyalty/**
-          filters:
-            - AuthFilter
-            - name: RequestRateLimiter
-              args:
-                redis-rate-limiter.replenishRate: 30
-                redis-rate-limiter.burstCapacity: 60
-                key-resolver: "#{@userKeyResolver}"
+            - id: subscription-service
+              uri: ${SUBSCRIPTION_SERVICE_URL:http://localhost:8090}
+              predicates:
+                - Path=/api/v1/subscriptions/**
+              filters:
+                - AuthFilter
+                - name: RequestRateLimiter
+                  args:
+                    redis-rate-limiter.replenishRate: 30
+                    redis-rate-limiter.burstCapacity: 60
+                    key-resolver: "#{@userKeyResolver}"
 
-        - id: rating-service
-          uri: ${RATING_SERVICE_URL:http://localhost:8091}
-          predicates:
-            - Path=/api/v1/ratings/**
-          filters:
-            - AuthFilter
-            - name: RequestRateLimiter
-              args:
-                redis-rate-limiter.replenishRate: 30
-                redis-rate-limiter.burstCapacity: 60
-                key-resolver: "#{@userKeyResolver}"
+            - id: notification-service
+              uri: ${NOTIFICATION_SERVICE_URL:http://localhost:8091}
+              predicates:
+                - Path=/api/v1/notifications/**
+              filters:
+                - AuthFilter
+                - name: RequestRateLimiter
+                  args:
+                    redis-rate-limiter.replenishRate: 30
+                    redis-rate-limiter.burstCapacity: 60
+                    key-resolver: "#{@userKeyResolver}"
 
-        - id: matching-service
-          uri: ${MATCHING_SERVICE_URL:http://localhost:8092}
-          predicates:
-            - Path=/api/v1/matching/**
-          filters:
-            - AuthFilter
-            - name: RequestRateLimiter
-              args:
-                redis-rate-limiter.replenishRate: 30
-                redis-rate-limiter.burstCapacity: 60
-                key-resolver: "#{@userKeyResolver}"
+            - id: loyalty-service
+              uri: ${LOYALTY_SERVICE_URL:http://localhost:8095}
+              predicates:
+                - Path=/api/v1/loyalty/**
+              filters:
+                - AuthFilter
+                - name: RequestRateLimiter
+                  args:
+                    redis-rate-limiter.replenishRate: 30
+                    redis-rate-limiter.burstCapacity: 60
+                    key-resolver: "#{@userKeyResolver}"
 
-        - id: analytics-service
-          uri: ${ANALYTICS_SERVICE_URL:http://localhost:8093}
-          predicates:
-            - Path=/api/v1/analytics/**
-          filters:
-            - AuthFilter
-            - RoleFilter=DRIVER,ADMIN
-            - name: RequestRateLimiter
-              args:
-                redis-rate-limiter.replenishRate: 30
-                redis-rate-limiter.burstCapacity: 60
-                key-resolver: "#{@userKeyResolver}"
+            - id: rating-service
+              uri: ${RATING_SERVICE_URL:http://localhost:8092}
+              predicates:
+                - Path=/api/v1/ratings/**
+              filters:
+                - AuthFilter
+                - name: RequestRateLimiter
+                  args:
+                    redis-rate-limiter.replenishRate: 30
+                    redis-rate-limiter.burstCapacity: 60
+                    key-resolver: "#{@userKeyResolver}"
 
-        - id: compliance-service
-          uri: ${COMPLIANCE_SERVICE_URL:http://localhost:8094}
-          predicates:
-            - Path=/api/v1/compliance/**
-          filters:
-            - AuthFilter
-            - RoleFilter=ADMIN
-            - name: RequestRateLimiter
-              args:
-                redis-rate-limiter.replenishRate: 30
-                redis-rate-limiter.burstCapacity: 60
-                key-resolver: "#{@userKeyResolver}"
+            - id: matching-service
+              uri: ${MATCHING_SERVICE_URL:http://localhost:8086}
+              predicates:
+                - Path=/api/v1/matching/**
+              filters:
+                - AuthFilter
+                - name: RequestRateLimiter
+                  args:
+                    redis-rate-limiter.replenishRate: 30
+                    redis-rate-limiter.burstCapacity: 60
+                    key-resolver: "#{@userKeyResolver}"
 
-        - id: country-config-service
-          uri: ${COUNTRY_CONFIG_SERVICE_URL:http://localhost:8095}
-          predicates:
-            - Path=/api/v1/config/**
-          filters:
-            - name: RequestRateLimiter
-              args:
-                redis-rate-limiter.replenishRate: 10
-                redis-rate-limiter.burstCapacity: 20
-                key-resolver: "#{@ipKeyResolver}"
-          # Public for GET; admin protection handled inside the service
+            # ── Admin routes (role-restricted) ──
+            - id: analytics-service
+              uri: ${ANALYTICS_SERVICE_URL:http://localhost:8093}
+              predicates:
+                - Path=/api/v1/analytics/**
+              filters:
+                - AuthFilter
+                - RoleFilter=DRIVER,ADMIN
+                - name: RequestRateLimiter
+                  args:
+                    redis-rate-limiter.replenishRate: 30
+                    redis-rate-limiter.burstCapacity: 60
+                    key-resolver: "#{@userKeyResolver}"
 
-        - id: block-internal
-          uri: no://op
-          predicates:
-            - Path=/internal/**
-          filters:
-            - SetStatus=404
+            - id: compliance-service
+              uri: ${COMPLIANCE_SERVICE_URL:http://localhost:8094}
+              predicates:
+                - Path=/api/v1/compliance/**
+              filters:
+                - AuthFilter
+                - RoleFilter=ADMIN
+                - name: RequestRateLimiter
+                  args:
+                    redis-rate-limiter.replenishRate: 30
+                    redis-rate-limiter.burstCapacity: 60
+                    key-resolver: "#{@userKeyResolver}"
+
+            # ── Block internal routes ──
+            - id: block-internal
+              uri: no://op
+              predicates:
+                - Path=/internal/**
+              filters:
+                - SetStatus=404
 
 resilience4j:
   circuitbreaker:

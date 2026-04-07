@@ -13,7 +13,7 @@ class IpKeyResolverTest {
     private final KeyResolver keyResolver = new GatewayKeyResolverConfig().ipKeyResolver();
 
     @Test
-    void givenRequest_whenResolve_thenReturnsClientIp() {
+    void givenDirectConnection_whenResolve_thenReturnsRemoteAddress() {
         MockServerHttpRequest request =
                 MockServerHttpRequest.get("/test")
                         .remoteAddress(
@@ -26,7 +26,31 @@ class IpKeyResolverTest {
     }
 
     @Test
-    void givenRequestWithNoRemoteAddress_whenResolve_thenReturnsUnknown() {
+    void givenXForwardedFor_whenResolve_thenReturnsClientIp() {
+        MockServerHttpRequest request =
+                MockServerHttpRequest.get("/test")
+                        .header("X-Forwarded-For", "203.0.113.50")
+                        .build();
+
+        StepVerifier.create(keyResolver.resolve(MockServerWebExchange.from(request)))
+                .expectNext("203.0.113.50")
+                .verifyComplete();
+    }
+
+    @Test
+    void givenMultipleXForwardedFor_whenResolve_thenReturnsFirstClientIp() {
+        MockServerHttpRequest request =
+                MockServerHttpRequest.get("/test")
+                        .header("X-Forwarded-For", "203.0.113.50, 70.41.3.18, 150.172.238.178")
+                        .build();
+
+        StepVerifier.create(keyResolver.resolve(MockServerWebExchange.from(request)))
+                .expectNext("203.0.113.50")
+                .verifyComplete();
+    }
+
+    @Test
+    void givenNoRemoteAddressAndNoForwarded_whenResolve_thenReturnsUnknown() {
         MockServerHttpRequest request = MockServerHttpRequest.get("/test").build();
 
         StepVerifier.create(keyResolver.resolve(MockServerWebExchange.from(request)))
