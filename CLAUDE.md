@@ -767,34 +767,74 @@ to build each service, refer to the **"Implementation Steps"** section in that s
 ## 14. Testing Strategy
 
 ### Unit tests — for pure logic
-- All `util/` classes
-- `PricingService.calculateFare(...)` — test all edge cases
-- OTP generation, expiry, attempts
-- State machine transitions in ride-service
+- Use `@ExtendWith(MockitoExtension.class)` with `@Mock` and `@InjectMocks`
+- All `util/` classes, services, controllers
+- State machine transitions, validation logic, edge cases
 
-### Integration tests — use Testcontainers
+### Integration tests — use Testcontainers (Spring Boot 4 patterns)
+
+**Important Spring Boot 4 / Docker 29 compatibility notes:**
+- `@MockitoBean` is in `org.springframework.test.context.bean.override.mockito` (NOT `org.springframework.test.bean.override.mockito`)
+- Add `src/test/resources/docker-java.properties` with `api.version=1.44` to fix Docker 29 compatibility with Testcontainers 1.x
+- Use `WebTestClient` for HTTP assertions (works for both servlet and reactive services)
+- Add `spring-webflux` as a test dependency for servlet services to enable `WebTestClient`
+- Mock `KafkaTemplate` with `@MockitoBean` when Kafka broker isn't needed
+- Use test profile with `spring.jpa.hibernate.ddl-auto: create-drop` and `spring.flyway.enabled: false` for schema setup from entities
+- api-gateway does NOT support `@SpringBootTest` integration tests (Spring Cloud Gateway + Boot 4 WebFlux context conflict) — use unit tests only
+
 ```java
-@SpringBootTest
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Testcontainers
-class RideFlowIntegrationTest {
+@ActiveProfiles("test")
+class ServiceIntegrationTest {
 
     @Container
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
 
     @Container
+    @SuppressWarnings("resource")
     static GenericContainer<?> redis = new GenericContainer<>("redis:7-alpine").withExposedPorts(6379);
-
-    @Container
-    static KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.6.0"));
 
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", postgres::getJdbcUrl);
+        registry.add("spring.datasource.username", postgres::getUsername);
+        registry.add("spring.datasource.password", postgres::getPassword);
         registry.add("spring.data.redis.host", redis::getHost);
         registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
-        registry.add("spring.kafka.bootstrap-servers", kafka::getBootstrapServers);
+    }
+
+    @MockitoBean  // org.springframework.test.context.bean.override.mockito.MockitoBean
+    private KafkaTemplate<String, Object> kafkaTemplate;
+
+    @LocalServerPort
+    private int port;
+
+    private WebTestClient webTestClient;
+
+    @BeforeEach
+    void setUp() {
+        webTestClient = WebTestClient.bindToServer()
+                .baseUrl("http://localhost:" + port).build();
     }
 }
+```
+
+### Test profile configuration (`src/test/resources/application-test.yml`)
+```yaml
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop    # Auto-create schema from entities in tests
+  flyway:
+    enabled: false             # Disable Flyway in tests (entities define schema)
+  kafka:
+    bootstrap-servers: localhost:9092  # Dummy, mocked via @MockitoBean
+```
+
+### Docker 29 compatibility (`src/test/resources/docker-java.properties`)
+```properties
+api.version=1.44
 ```
 
 ### Test naming convention

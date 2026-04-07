@@ -1,0 +1,26 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+  flyway:
+    enabled: false
+  kafka:
+    bootstrap-servers: localhost:9092
+
+twende:
+  auth:
+    otp:
+      length: 6
+      expiry-minutes: 5
+      max-attempts: 3
+      max-requests-per-window: 3
+      window-minutes: 10
+      dev-mode: true
+    jwt:
+      access-token-ttl-seconds: 3600
+      refresh-token-ttl-days: 30
+
+logging:
+  level:
+    com.twende: DEBUG
+    org.springframework.security: DEBUG

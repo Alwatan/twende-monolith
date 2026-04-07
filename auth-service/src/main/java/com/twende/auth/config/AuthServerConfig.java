@@ -122,7 +122,7 @@ public class AuthServerConfig {
         RegisteredClient riderApp =
                 RegisteredClient.withId(UUID.randomUUID().toString())
                         .clientId("twende-rider-app")
-                        .clientSecret("{noop}secret")
+                        .clientSecret("{noop}rider-secret")
                         .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
                         .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_POST)
                         .authorizationGrantType(AuthorizationGrantType.CLIENT_CREDENTIALS)
@@ -138,7 +138,7 @@ public class AuthServerConfig {
         RegisteredClient driverApp =
                 RegisteredClient.withId(UUID.randomUUID().toString())
                         .clientId("twende-driver-app")
-                        .clientSecret("{noop}secret")
+                        .clientSecret("{noop}driver-secret")
                         .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
                         .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_POST)
                         .authorizationGrantType(AuthorizationGrantType.CLIENT_CREDENTIALS)
@@ -155,7 +155,7 @@ public class AuthServerConfig {
         RegisteredClient adminApp =
                 RegisteredClient.withId(UUID.randomUUID().toString())
                         .clientId("twende-admin")
-                        .clientSecret("{noop}secret")
+                        .clientSecret("{noop}admin-secret")
                         .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
                         .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_POST)
                         .authorizationGrantType(AuthorizationGrantType.CLIENT_CREDENTIALS)
@@ -171,7 +171,7 @@ public class AuthServerConfig {
         RegisteredClient internalClient =
                 RegisteredClient.withId(UUID.randomUUID().toString())
                         .clientId("twende-internal")
-                        .clientSecret("{noop}secret")
+                        .clientSecret("{noop}internal-secret")
                         .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
                         .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_POST)
                         .authorizationGrantType(AuthorizationGrantType.CLIENT_CREDENTIALS)
