@@ -14,4 +14,7 @@ public class UserRegisteredEvent extends KafkaEvent {
     private String fullName;
     private String phoneNumber;
     private UserRole role;
+    private String email;
+    private String profilePhotoUrl;
+    private String authProvider;
 }

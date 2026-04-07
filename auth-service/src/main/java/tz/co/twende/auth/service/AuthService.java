@@ -96,6 +96,9 @@ public class AuthService {
         event.setFullName(request.getFullName());
         event.setPhoneNumber(user.getPhoneNumber());
         event.setRole(request.getRole());
+        event.setEmail(user.getEmail());
+        event.setProfilePhotoUrl(user.getProfilePhotoUrl());
+        event.setAuthProvider(user.getAuthProvider());
 
         kafkaTemplate.send(USER_REGISTERED_TOPIC, userId.toString(), event);
         log.info(

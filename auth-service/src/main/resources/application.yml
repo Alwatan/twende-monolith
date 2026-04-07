@@ -39,6 +39,11 @@ twende:
       refresh-token-ttl-days: 30
       keystore-path: ${JWT_KEYSTORE_PATH:}
       keystore-password: ${JWT_KEYSTORE_PASSWORD:}
+    google:
+      client-id: ${GOOGLE_CLIENT_ID:}
+    apple:
+      client-id: ${APPLE_CLIENT_ID:}
+      team-id: ${APPLE_TEAM_ID:}
     africastalking:
       api-key: ${AT_API_KEY:}
       username: ${AT_USERNAME:sandbox}

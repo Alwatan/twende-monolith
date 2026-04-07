@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.*;
 import tz.co.twende.auth.dto.*;
 import tz.co.twende.auth.service.AuthService;
 import tz.co.twende.auth.service.OtpService;
+import tz.co.twende.auth.service.SocialLoginService;
 import tz.co.twende.auth.service.TokenService;
 import tz.co.twende.common.response.ApiResponse;
 
@@ -20,6 +21,7 @@ public class AuthController {
     private final OtpService otpService;
     private final AuthService authService;
     private final TokenService tokenService;
+    private final SocialLoginService socialLoginService;
 
     /**
      * Request a 6-digit OTP to be sent to the given phone number. Public endpoint -- no
@@ -72,6 +74,41 @@ public class AuthController {
         UUID userId = extractUserId();
         UserInfoDto userInfo = authService.getCurrentUser(userId);
         return ResponseEntity.ok(ApiResponse.ok(userInfo));
+    }
+
+    /**
+     * Authenticate via a social provider (Google or Apple) ID token. Public endpoint. Returns JWT
+     * tokens. If the user has no phone number linked, phoneRequired=true in the response.
+     */
+    @PostMapping("/social/login")
+    public ResponseEntity<ApiResponse<TokenResponseDto>> socialLogin(
+            @Valid @RequestBody SocialLoginRequestDto request) {
+        TokenResponseDto tokenResponse = socialLoginService.socialLogin(request);
+        return ResponseEntity.ok(ApiResponse.ok(tokenResponse));
+    }
+
+    /**
+     * Link a phone number to a social-only account. Requires authentication. The phone number is
+     * verified via OTP before linking.
+     */
+    @PostMapping("/link/phone")
+    public ResponseEntity<ApiResponse<Void>> linkPhone(
+            @Valid @RequestBody LinkPhoneRequestDto request) {
+        UUID userId = extractUserId();
+        socialLoginService.linkPhone(userId, request);
+        return ResponseEntity.ok(ApiResponse.ok(null, "Phone number linked successfully"));
+    }
+
+    /**
+     * Link a social account (Google or Apple) to an existing phone-authenticated user. Requires
+     * authentication.
+     */
+    @PostMapping("/link/social")
+    public ResponseEntity<ApiResponse<Void>> linkSocial(
+            @Valid @RequestBody LinkSocialRequestDto request) {
+        UUID userId = extractUserId();
+        socialLoginService.linkSocial(userId, request);
+        return ResponseEntity.ok(ApiResponse.ok(null, "Social account linked successfully"));
     }
 
     private UUID extractUserId() {

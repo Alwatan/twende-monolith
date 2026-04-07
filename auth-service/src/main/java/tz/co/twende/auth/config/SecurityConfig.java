@@ -40,6 +40,8 @@ public class SecurityConfig {
                         auth ->
                                 auth.requestMatchers("/api/v1/auth/otp/**")
                                         .permitAll()
+                                        .requestMatchers("/api/v1/auth/social/**")
+                                        .permitAll()
                                         .requestMatchers("/oauth2/**")
                                         .permitAll()
                                         .requestMatchers(

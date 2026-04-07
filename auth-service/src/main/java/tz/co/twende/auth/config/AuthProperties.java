@@ -11,6 +11,8 @@ public class AuthProperties {
 
     private Otp otp = new Otp();
     private Jwt jwt = new Jwt();
+    private Google google = new Google();
+    private Apple apple = new Apple();
 
     @Data
     public static class Otp {
@@ -28,5 +30,16 @@ public class AuthProperties {
         private int refreshTokenTtlDays = 30;
         private String keystorePath;
         private String keystorePassword;
+    }
+
+    @Data
+    public static class Google {
+        private String clientId;
+    }
+
+    @Data
+    public static class Apple {
+        private String clientId;
+        private String teamId;
     }
 }

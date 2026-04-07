@@ -14,7 +14,7 @@ import tz.co.twende.common.enums.UserRole;
 @NoArgsConstructor
 public class AuthUser extends BaseEntity {
 
-    @Column(name = "phone_number", length = 20, unique = true, nullable = false)
+    @Column(name = "phone_number", length = 20, unique = true)
     private String phoneNumber;
 
     @Enumerated(EnumType.STRING)
@@ -29,4 +29,13 @@ public class AuthUser extends BaseEntity {
 
     @Column(name = "full_name")
     private String fullName;
+
+    @Column(name = "auth_provider", length = 10, nullable = false)
+    private String authProvider = "PHONE";
+
+    @Column(name = "email", length = 255)
+    private String email;
+
+    @Column(name = "profile_photo_url", length = 500)
+    private String profilePhotoUrl;
 }

@@ -13,4 +13,5 @@ public class TokenResponseDto {
     private String tokenType;
     private long expiresIn;
     private boolean isNewUser;
+    private boolean phoneRequired;
 }

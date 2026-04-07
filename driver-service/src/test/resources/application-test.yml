@@ -1,0 +1,38 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+  flyway:
+    enabled: false
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: driver-service-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "tz.co.twende.*"
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+twende:
+  services:
+    subscription-service:
+      url: http://localhost:9999
+    location-service:
+      url: http://localhost:9998
+    country-config-service:
+      url: http://localhost:9997
+  minio:
+    endpoint: http://localhost:9000
+    access-key: twende
+    secret-key: twende123
+    bucket: twende-driver-documents
+  documents:
+    max-file-size: 10485760
+
+logging:
+  level:
+    tz.co.twende: DEBUG
