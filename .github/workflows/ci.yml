@@ -149,6 +149,7 @@ jobs:
       - uses: github/codeql-action/init@v4
         with:
           languages: java-kotlin
+          build-mode: none
       - uses: actions/setup-java@v4
         with:
           java-version: ${{ env.JAVA_VERSION }}
