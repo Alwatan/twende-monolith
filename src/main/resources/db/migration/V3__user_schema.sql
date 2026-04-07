@@ -1,2 +1,0 @@
--- User module schema
--- See CLAUDE.md module: user

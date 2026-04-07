@@ -1,2 +1,0 @@
--- Payment module schema
--- See CLAUDE.md module: payment

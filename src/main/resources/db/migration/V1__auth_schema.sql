@@ -1,2 +1,0 @@
--- Auth module schema
--- See CLAUDE.md module: auth

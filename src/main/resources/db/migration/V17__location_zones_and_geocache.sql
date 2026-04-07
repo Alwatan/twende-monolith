@@ -1,2 +1,0 @@
--- Location module: zones, geocode_cache, and provider columns on operating_cities
--- See CLAUDE.md for specification

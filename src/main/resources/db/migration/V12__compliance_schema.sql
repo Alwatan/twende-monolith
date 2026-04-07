@@ -1,2 +1,0 @@
--- Compliance module schema
--- See CLAUDE.md module: compliance

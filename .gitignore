@@ -1,4 +1,5 @@
 target/
+*/target/
 *.class
 .env
 *.p12
@@ -6,3 +7,4 @@ target/
 .idea/
 *.iml
 .DS_Store
+*.log

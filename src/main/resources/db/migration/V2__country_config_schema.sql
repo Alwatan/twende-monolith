@@ -1,2 +1,0 @@
--- Country config schema
--- See CLAUDE.md module: countryconfig

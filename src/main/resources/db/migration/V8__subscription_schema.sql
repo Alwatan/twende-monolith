@@ -1,2 +1,0 @@
--- Subscription module schema
--- See CLAUDE.md module: subscription

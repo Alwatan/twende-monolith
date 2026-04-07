@@ -1,2 +1,0 @@
--- Notification module schema
--- See CLAUDE.md module: notification
