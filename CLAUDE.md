@@ -896,21 +896,82 @@ to build each service, refer to the **"Implementation Steps"** section in that s
   `spring-cloud-starter-gateway-server-webflux` (not `spring-cloud-starter-gateway`).
   Route config prefix: `spring.cloud.gateway.server.webflux`.
 
-**Spring Boot 4 / Docker 29 compatibility notes:**
-- `@WebMvcTest` moved to separate module `spring-boot-starter-webmvc-test`. Add as test
-  dependency. Import: `org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest`.
-  For services without this dependency, use plain Mockito unit tests with `@InjectMocks`.
-- `@MockitoBean` is in `org.springframework.test.context.bean.override.mockito`
-  (NOT `org.springframework.test.bean.override.mockito`)
-- Add `src/test/resources/docker-java.properties` with `api.version=1.44` to fix
-  Docker 29 compatibility with Testcontainers 1.x
-- Use `WebTestClient` for HTTP assertions (works for both servlet and reactive services)
-- Add `spring-webflux` as a test dependency for servlet services to enable `WebTestClient`
-- Mock `KafkaTemplate` with `@MockitoBean` when Kafka broker isn't needed
-- Use test profile with `spring.jpa.hibernate.ddl-auto: create-drop` and
-  `spring.flyway.enabled: false` for schema setup from entities
-- `TestRestTemplate` moved to `org.springframework.boot.resttestclient` in Boot 4 and
-  requires `spring-boot-resttestclient` dependency — prefer `WebTestClient` instead
+### Spring Boot 4 Testing — DO / DO NOT (read this FIRST)
+
+**These rules apply to EVERY test. Violations cause compilation or context failures.**
+
+#### DO NOT (these will break):
+- `import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest` — **WRONG PACKAGE**
+- `import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc` — **WRONG PACKAGE**
+- `import org.springframework.boot.test.web.client.TestRestTemplate` — **WRONG PACKAGE**
+- `import org.springframework.test.bean.override.mockito.MockitoBean` — **WRONG PACKAGE**
+- `new UserRegisteredEvent(uuid, name, phone, role)` — **WRONG CONSTRUCTOR** (7 fields now)
+- `new GenericJackson2JsonRedisSerializer()` — **DEPRECATED**, use `GenericJacksonJsonRedisSerializer`
+- `com.fasterxml.jackson.databind.ObjectMapper` for injected beans — Boot 4 auto-configures **Jackson 3** (`tools.jackson.databind.ObjectMapper`)
+
+#### DO (correct patterns):
+- `@MockitoBean` → `import org.springframework.test.context.bean.override.mockito.MockitoBean`
+- `@WebMvcTest` → add `spring-boot-starter-webmvc-test` dependency, import from `org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest`
+- **OR** skip `@WebMvcTest` entirely and use plain `@ExtendWith(MockitoExtension.class)` with `@Mock` + `@InjectMocks` (recommended — simpler, no context loading)
+- `WebTestClient` → add `spring-webflux` as test dependency, construct manually: `WebTestClient.bindToServer().baseUrl("http://localhost:" + port).build()`
+- `docker-java.properties` → `api.version=1.44` (required for Docker 29 + Testcontainers 1.x)
+- `application-test.yml` → `ddl-auto: create-drop`, `flyway.enabled: false`, dummy `kafka.bootstrap-servers`
+- Event constructors → use **setters** (Lombok `@NoArgsConstructor` + `@Data`), not `@AllArgsConstructor`
+- Pre-set ID entities → use `JdbcTemplate` in integration tests to insert test data (bypasses `@GeneratedValue` conflict), or `EntityManager.merge()` in production code
+- Jackson 3 → `tools.jackson.databind.ObjectMapper` / `tools.jackson.core.JacksonException`
+- Redis serializer → `GenericJacksonJsonRedisSerializer` (Jackson 3 based, from `org.springframework.data.redis.serializer`)
+
+#### Test dependency checklist (add to pom.xml for EVERY service):
+```xml
+<!-- For WebTestClient (integration tests) -->
+<dependency>
+    <groupId>org.springframework</groupId>
+    <artifactId>spring-webflux</artifactId>
+    <scope>test</scope>
+</dependency>
+
+<!-- For @WebMvcTest (controller slice tests) — optional, can use Mockito instead -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-webmvc-test</artifactId>
+    <scope>test</scope>
+</dependency>
+```
+
+### Pattern: Unit test (services and controllers — NO Spring context)
+```java
+@ExtendWith(MockitoExtension.class)
+class DriverServiceTest {
+
+    @Mock private DriverProfileRepository driverRepository;
+    @Mock private KafkaTemplate<String, Object> kafkaTemplate;
+
+    @InjectMocks private DriverService driverService;
+
+    @Test
+    void givenApprovedDriver_whenGoOnline_thenStatusUpdated() {
+        // Arrange
+        UUID driverId = UUID.randomUUID();
+        DriverProfile driver = new DriverProfile();
+        driver.setId(driverId);
+        driver.setStatus(DriverStatus.APPROVED);
+        when(driverRepository.findById(driverId)).thenReturn(Optional.of(driver));
+
+        // Act
+        driverService.goOnline(driverId);
+
+        // Assert
+        assertEquals(DriverStatus.ONLINE_AVAILABLE, driver.getStatus());
+        verify(driverRepository).save(driver);
+    }
+}
+```
+**Key rules for unit tests:**
+- Use `@ExtendWith(MockitoExtension.class)`, NOT `@SpringBootTest`
+- Mock all dependencies with `@Mock`, inject with `@InjectMocks`
+- No Spring context loading — fast, no Docker needed
+- For controller tests: call controller methods directly, assert on `ResponseEntity`
+- Given_When_Then naming convention
 
 ### Pattern: Standard service integration test (with database + Redis)
 ```java
