@@ -666,7 +666,53 @@ Endpoint: `ws://host/ws/location?token={jwt}` — JWT validated during handshake
 
 ---
 
-## 12. Build Phases
+## 12. Mandatory Pre-Push Checks
+
+**No code may be committed or pushed unless ALL checks below pass locally.**
+
+If any step fails: STOP immediately, fix the issue, re-run the checks, and only proceed
+when everything passes. These checks mirror the CI pipeline — passing them locally prevents
+wasted CI cycles and ensures security issues are caught before code leaves the developer's
+machine.
+
+### Step 1: Code Formatting
+```bash
+./mvnw spotless:check
+```
+If it fails, auto-fix with `./mvnw spotless:apply` and re-check.
+
+### Step 2: Build, Tests & Coverage
+```bash
+./mvnw clean verify
+```
+Requirements:
+- All tests MUST pass (zero failures, zero errors)
+- No skipped or ignored tests unless justified
+- JaCoCo coverage >= 80% line coverage on all non-excluded classes
+
+### Step 3: Dependency & Secret Vulnerability Scan
+```bash
+trivy fs --scanners vuln,secret --severity HIGH,CRITICAL .
+```
+Requirements:
+- **ZERO** HIGH or CRITICAL vulnerabilities with available fixes
+- **ZERO** exposed secrets (API keys, tokens, passwords, private keys)
+- If a vulnerability has no fix available (`--ignore-unfixed`), document it and proceed
+
+### Quick Reference
+```bash
+# Run all 3 checks in sequence (copy-paste this before every push):
+./mvnw spotless:check && ./mvnw clean verify && trivy fs --scanners vuln,secret --severity HIGH,CRITICAL .
+```
+
+Or use the Makefile:
+```bash
+make check   # runs all 3 checks
+```
+
+---
+
+## 13. Build Phases
 
 Work through these phases in order. Do not start Phase N+1 until Phase N is complete and
 all tests are passing.
@@ -674,10 +720,10 @@ all tests are passing.
 **Phase completion rule — applies to EVERY phase:**
 1. Implement all items listed for the phase
 2. Write unit tests and integration tests covering all new code
-3. Run tests: `./mvnw -pl {service} test`
-4. Check coverage: `./mvnw -pl {service} verify` (JaCoCo)
-5. **Minimum 80% line coverage** on all new code. If below 80%, write more tests.
-6. Once all tests pass with >=80% coverage, commit and push.
+3. **Run ALL pre-push checks from Section 12** (format, verify, trivy)
+4. **Minimum 80% line coverage** on all new code. If below 80%, write more tests.
+5. Fix any vulnerabilities or secrets found by Trivy before committing.
+6. Once all checks pass, commit and push.
 
 **Detailed implementation sub-steps are in each service's `CLAUDE.md` file.** The phases
 below define the order and what services to build. For the step-by-step breakdown of HOW
@@ -718,7 +764,7 @@ to build each service, refer to the **"Implementation Steps"** section in that s
 
 ---
 
-## 13. Testing Strategy
+## 14. Testing Strategy
 
 ### Unit tests — for pure logic
 - All `util/` classes
@@ -764,7 +810,7 @@ void givenRideInRequestedStatus_whenRiderBoostsFare_thenFareUpdatedAndRebroadcas
 
 ---
 
-## 14. CI/CD Pipeline
+## 15. CI/CD Pipeline
 
 GitHub Actions at `.github/workflows/ci.yml`. Runs on push to `main`/`develop` and PRs.
 
@@ -781,7 +827,7 @@ GitHub Actions at `.github/workflows/ci.yml`. Runs on push to `main`/`develop` a
 
 ---
 
-## 15. External Integrations
+## 16. External Integrations
 
 | Integration | Provider | Used by | Pattern |
 |---|---|---|---|
@@ -797,7 +843,7 @@ GitHub Actions at `.github/workflows/ci.yml`. Runs on push to `main`/`develop` a
 
 ---
 
-## 16. Application Configuration Template
+## 17. Application Configuration Template
 
 Every service follows this standard `application.yml` structure:
 
@@ -868,7 +914,7 @@ twende:
 
 ---
 
-## 17. Multi-Country Strategy
+## 18. Multi-Country Strategy
 
 The `country-config-service` is the single source of truth for all country-specific behaviour.
 Every service that needs country-aware logic fetches its config from country-config-service

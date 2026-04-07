@@ -1,4 +1,4 @@
-.PHONY: build run test up down logs
+.PHONY: build run test check up down logs
 
 build:
 	./mvnw clean package -DskipTests
@@ -29,3 +29,8 @@ redis-cli:
 
 format:
 	./mvnw spotless:apply
+
+check:
+	./mvnw spotless:check
+	./mvnw clean verify
+	trivy fs --scanners vuln,secret --severity HIGH,CRITICAL .
