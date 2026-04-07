@@ -161,10 +161,36 @@ jobs:
           category: /language:java-kotlin
 
   # ──────────────────────────────────────────────
-  # Stage 5: Deploy (placeholder)
+  # Stage 5: Container Build Test
+  # Builds Docker images to verify Dockerfiles work.
+  # Does NOT push — publish stage added later.
   # ──────────────────────────────────────────────
-  # Container build, scan, and publish will be re-enabled
-  # once per-service Dockerfiles are in place.
+  container-build-test:
+    name: Container Build Test
+    needs: [build-and-test]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [api-gateway, auth-service]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build ${{ matrix.service }} image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.service }}/Dockerfile
+          push: false
+          tags: twende/${{ matrix.service }}:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ──────────────────────────────────────────────
+  # Stage 6: Deploy (placeholder)
+  # ──────────────────────────────────────────────
+  # Container scan and publish to GHCR will be enabled
+  # once all services have Dockerfiles and deployment
+  # infrastructure is provisioned.
   # Each service will get its own image:
   #   ghcr.io/alwatan/auth-service:sha
   #   ghcr.io/alwatan/ride-service:sha
