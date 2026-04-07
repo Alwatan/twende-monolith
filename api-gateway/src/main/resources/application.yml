@@ -18,12 +18,14 @@ spring:
       password: ${REDIS_PASSWORD:}
   cloud:
     gateway:
-      default-filters:
-        - name: CircuitBreaker
-          args:
-            name: default
-            fallbackUri: forward:/fallback
-      routes:
+      server:
+        webflux:
+          default-filters:
+            - name: CircuitBreaker
+              args:
+                name: default
+                fallbackUri: forward:/fallback
+          routes:
         - id: auth-service
           uri: ${AUTH_SERVICE_URL:http://localhost:8081}
           predicates:
