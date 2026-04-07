@@ -754,14 +754,18 @@ machine.
 ```
 If it fails, auto-fix with `./mvnw spotless:apply` and re-check.
 
-### Step 2: Build, Tests & Coverage
+### Step 2: Build, Tests & Coverage (ALL services, not just the one you changed)
 ```bash
 ./mvnw clean verify
 ```
+**This runs the ENTIRE monorepo** — all 17 modules, all tests, all coverage checks.
+Do NOT use `-pl {service}` for pre-push checks. A change in common-lib or a shared
+event class can break other services. Always verify the full build.
+
 Requirements:
-- All tests MUST pass (zero failures, zero errors)
+- All tests across ALL services MUST pass (zero failures, zero errors)
 - No skipped or ignored tests unless justified
-- JaCoCo coverage >= 80% line coverage on all non-excluded classes
+- JaCoCo coverage >= 80% line coverage on all non-excluded classes in every service
 
 ### Step 3: Dependency & Secret Vulnerability Scan
 ```bash
@@ -793,10 +797,12 @@ all tests are passing.
 **Phase completion rule — applies to EVERY phase:**
 1. Implement all items listed for the phase
 2. Write unit tests and integration tests covering all new code
-3. **Run ALL pre-push checks from Section 12** (format, verify, trivy)
+3. **Run ALL pre-push checks from Section 12** — this means `./mvnw clean verify`
+   across the ENTIRE monorepo (all services), not just the service you changed.
+   A change in common-lib or shared events can break other services.
 4. **Minimum 80% line coverage** on all new code. If below 80%, write more tests.
 5. Fix any vulnerabilities or secrets found by Trivy before committing.
-6. Once all checks pass, commit and push.
+6. Once ALL checks pass across ALL services, commit and push.
 
 **Detailed implementation sub-steps are in each service's `CLAUDE.md` file.** The phases
 below define the order and what services to build. For the step-by-step breakdown of HOW
