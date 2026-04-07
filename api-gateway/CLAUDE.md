@@ -101,14 +101,14 @@ environment variables. **No `lb://` scheme** (no Eureka).
 
 | Route ID | Path | Target | Auth | Rate Limit |
 |---|---|---|---|---|
+| auth-otp | `/api/v1/auth/otp/**` | `${AUTH_SERVICE_URL}` | None (public) | **3 req/s per IP** (brute force protection) |
 | auth-service | `/api/v1/auth/**`, `/oauth2/**` | `${AUTH_SERVICE_URL}` | None (public) | 10 req/s per IP |
-| country-config-read | `/api/v1/config/**` GET | `${COUNTRY_CONFIG_SERVICE_URL}` | None (public) | 10 req/s per IP |
-| country-config-write | `/api/v1/config/**` POST/PUT/PATCH/DELETE | `${COUNTRY_CONFIG_SERVICE_URL}` | AuthFilter + RoleFilter=ADMIN | 30 req/s per user |
+| country-config-service | `/api/v1/config/**` | `${COUNTRY_CONFIG_SERVICE_URL}` | None (public GET, admin writes inside service) | 10 req/s per IP |
+| ride-service | `/api/v1/rides/**` | `${RIDE_SERVICE_URL}` | AuthFilter | **5 req/s per user** (prevent spam requests) |
+| location-service | `/api/v1/locations/**` | `${LOCATION_SERVICE_URL}` | AuthFilter | **60 req/s per user** (frequent GPS updates) |
+| location-ws | `/ws/**` | `${LOCATION_SERVICE_URL}` | None (WS handshake auth) | None |
 | user-service | `/api/v1/users/**` | `${USER_SERVICE_URL}` | AuthFilter | 30 req/s per user |
 | driver-service | `/api/v1/drivers/**` | `${DRIVER_SERVICE_URL}` | AuthFilter | 30 req/s per user |
-| ride-service | `/api/v1/rides/**` | `${RIDE_SERVICE_URL}` | AuthFilter | 30 req/s per user |
-| location-service | `/api/v1/locations/**` | `${LOCATION_SERVICE_URL}` | AuthFilter | 30 req/s per user |
-| location-ws | `/ws/**` | `${LOCATION_SERVICE_URL}` | None (WS handshake auth) | None |
 | pricing-service | `/api/v1/pricing/**` | `${PRICING_SERVICE_URL}` | AuthFilter | 30 req/s per user |
 | payment-service | `/api/v1/payments/**` | `${PAYMENT_SERVICE_URL}` | AuthFilter | 30 req/s per user |
 | subscription-service | `/api/v1/subscriptions/**` | `${SUBSCRIPTION_SERVICE_URL}` | AuthFilter | 30 req/s per user |
@@ -235,17 +235,29 @@ services.
 ## 7. Rate Limiting
 
 Uses Spring Cloud Gateway's built-in `RequestRateLimiter` filter backed by Redis.
+Per-endpoint rate limits protect sensitive endpoints from abuse while allowing
+high-frequency endpoints (like location updates) sufficient throughput.
 
 ### Key Resolvers
 
+Both resolvers are in `GatewayKeyResolverConfig`. The `ipKeyResolver` is `@Primary`.
+
 ```java
-@Bean
+// IP resolver — supports X-Forwarded-For for production behind LB/proxy
+@Bean @Primary
 public KeyResolver ipKeyResolver() {
-    return exchange -> Mono.just(
-        exchange.getRequest().getRemoteAddress().getAddress().getHostAddress()
-    );
+    return exchange -> {
+        String forwarded = exchange.getRequest().getHeaders().getFirst("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return Mono.just(forwarded.split(",")[0].trim()); // first IP = real client
+        }
+        return Mono.just(exchange.getRequest().getRemoteAddress() != null
+            ? exchange.getRequest().getRemoteAddress().getAddress().getHostAddress()
+            : "unknown");
+    };
 }
 
+// User resolver — uses X-User-Id header injected by AuthFilter
 @Bean
 public KeyResolver userKeyResolver() {
     return exchange -> Mono.justOrEmpty(
@@ -254,47 +266,56 @@ public KeyResolver userKeyResolver() {
 }
 ```
 
-### Default Limits
+### Per-Endpoint Limits
 
-| Scope | Replenish Rate | Burst Capacity | Key Resolver |
-|---|---|---|---|
-| Public routes (auth, config GET, OTP) | 10 req/s | 20 | `ipKeyResolver` |
-| Authenticated routes | 30 req/s | 60 | `userKeyResolver` |
-| Admin routes | 100 req/s | 200 | `userKeyResolver` |
+| Scope | Replenish Rate | Burst Capacity | Key Resolver | Rationale |
+|---|---|---|---|---|
+| OTP endpoints (`/auth/otp/**`) | **3 req/s** | 5 | `ipKeyResolver` | Brute force protection |
+| Auth general (`/auth/**`, `/oauth2/**`) | 10 req/s | 20 | `ipKeyResolver` | Public, moderate |
+| Config (`/config/**`) | 10 req/s | 20 | `ipKeyResolver` | Public, read-mostly |
+| Rides (`/rides/**`) | **5 req/s** | 10 | `userKeyResolver` | Prevent spam ride requests |
+| Location (`/locations/**`) | **60 req/s** | 120 | `userKeyResolver` | Frequent GPS updates |
+| All other authenticated | 30 req/s | 60 | `userKeyResolver` | Standard default |
 
-When rate limited, the gateway returns **429 Too Many Requests** with standard
-`X-RateLimit-Remaining` and `X-RateLimit-Burst-Capacity` headers.
+When rate limited, the gateway returns **429 Too Many Requests** with headers:
+`X-RateLimit-Remaining`, `X-RateLimit-Burst-Capacity`, `X-RateLimit-Replenish-Rate`.
 
 ---
 
 ## 8. CORS Configuration
 
-```java
-@Bean
-public CorsWebFilter corsWebFilter() {
-    CorsConfiguration config = new CorsConfiguration();
-    config.setAllowedOrigins(List.of(
-        "https://admin.twende.app",
-        "https://app.twende.app",
-        "http://localhost:3000"    // local development
-    ));
-    config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
-    config.setAllowedHeaders(List.of("*"));
-    config.setExposedHeaders(List.of("X-RateLimit-Remaining", "X-RateLimit-Burst-Capacity"));
-    config.setAllowCredentials(true);
-    config.setMaxAge(3600L);
+Environment-aware and configurable via environment variables.
 
-    UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-    source.registerCorsConfiguration("/**", config);
-    return new CorsWebFilter(source);
-}
-```
+### Behaviour
 
-**Rules:**
+| Environment | Origins allowed |
+|-------------|-----------------|
+| **Production** (`TWENDE_ENV=prod`) | `https://admin.twende.co.tz`, `https://app.twende.co.tz` |
+| **Development** (default) | Production origins + `http://localhost:3000`, `http://localhost:5173`, `http://localhost:8080` |
+| **Custom** (`CORS_ALLOWED_ORIGINS` set) | Comma-separated list from env var (overrides all defaults) |
+
+### Allowed Headers (explicit list, not wildcard)
+
+`Authorization`, `Content-Type`, `Accept`, `X-Requested-With`, `Cache-Control`
+
+### Exposed Headers (visible to browser JavaScript)
+
+`X-RateLimit-Remaining`, `X-RateLimit-Burst-Capacity`, `X-RateLimit-Replenish-Rate`
+
+### Configuration
+
+| Env Var | Default | Description |
+|---------|---------|-------------|
+| `CORS_ALLOWED_ORIGINS` | (empty, uses defaults) | Comma-separated origins. Overrides all defaults when set. |
+| `TWENDE_ENV` | `dev` | Set to `prod` or `production` to exclude localhost origins |
+
+### Rules
+
 - Only allow origins that are known Twende clients
 - `allowCredentials: true` is required for cookie-based refresh tokens
-- `OPTIONS` preflight requests must be handled (they are, by default, with this config)
-- Add new origins via environment variable if needed: `${CORS_ALLOWED_ORIGINS}`
+- `OPTIONS` preflight requests handled automatically
+- `maxAge: 3600` (1 hour) — browser caches preflight response
+- Mobile apps (native HTTP) don't need CORS — this is for web clients only
 
 ---
 
@@ -597,7 +618,7 @@ Build in this order. Each step should compile and pass tests before moving to th
 - [ ] **5. RoleFilter** — `GatewayFilterFactory<RoleFilter.Config>` with configurable `roles` list. Read `X-User-Role` header (set by AuthFilter), return 403 if role not in allowed list. Usage in route config: `RoleFilter=ADMIN` or `RoleFilter=DRIVER,ADMIN`.
 - [ ] **6. InternalRouteBlockFilter** — `GlobalFilter` that matches `/internal/**` paths and returns 404. Prevents external access to service-to-service endpoints.
 - [ ] **7. RequestLoggingFilter** — `GlobalFilter` that logs HTTP method, path, `X-User-Id` (if present), response status code, and request duration in milliseconds. Runs on every request.
-- [ ] **8. Rate limiting** — `IpKeyResolver` bean (resolves client IP), `UserKeyResolver` bean (resolves `X-User-Id` header, falls back to "anonymous"). Wire into route config: public routes use ipKeyResolver (10 req/s, burst 20), authenticated routes use userKeyResolver (30 req/s, burst 60). Backed by reactive Redis.
+- [ ] **8. Rate limiting** — `GatewayKeyResolverConfig` with `ipKeyResolver` (@Primary, supports X-Forwarded-For for production behind LB) and `userKeyResolver` (X-User-Id header, falls back to "anonymous"). Per-endpoint limits: OTP 3/s per IP, auth 10/s per IP, rides 5/s per user, location 60/s per user, general 30/s per user. Backed by reactive Redis.
 - [ ] **9. RedisConfig** — Reactive `ReactiveRedisConnectionFactory` and `ReactiveRedisTemplate` beans for rate limiting counters.
 - [ ] **10. CorsConfig** — `CorsWebFilter` bean allowing origins `https://admin.twende.app`, `https://app.twende.app`, `http://localhost:3000`. Allow all standard methods, expose rate limit headers, `allowCredentials: true`, max age 3600s. Support `${CORS_ALLOWED_ORIGINS}` env var override.
 - [ ] **11. Resilience4jConfig** — Circuit breaker defaults: sliding window 10, failure rate threshold 50%, wait 10s in open state, 3 calls in half-open. Time limiter: 5s timeout. Fallback controller returning 503 with JSON body `{"success": false, "message": "Service temporarily unavailable. Please try again shortly.", "data": null}`.
