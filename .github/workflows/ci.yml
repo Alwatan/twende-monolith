@@ -15,50 +15,98 @@ permissions:
 env:
   JAVA_VERSION: '21'
   JAVA_DISTRIBUTION: 'temurin'
-  REGISTRY: ghcr.io
-  IMAGE_NAME: alwatan/twende-monolith
 
 jobs:
 
   # ──────────────────────────────────────────────
-  # Stage 1: Code quality checks (fast feedback)
+  # Stage 1: Lint (fast feedback)
   # ──────────────────────────────────────────────
   lint:
     name: Lint & Format
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up JDK
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: ${{ env.JAVA_DISTRIBUTION }}
           cache: maven
-
       - name: Check code formatting
         run: ./mvnw spotless:check --no-transfer-progress
 
   # ──────────────────────────────────────────────
-  # Stage 2: Security scanning (Trivy + CodeQL)
+  # Stage 2: Build all modules + run tests
   # ──────────────────────────────────────────────
-  security-scan:
-    name: Trivy Dependency Scan
+  build-and-test:
+    name: Build & Test
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: twende_test
+          POSTGRES_USER: twende
+          POSTGRES_PASSWORD: twende
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U twende -d twende_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up JDK
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: ${{ env.JAVA_DISTRIBUTION }}
           cache: maven
 
-      - name: Resolve Maven dependencies
-        run: ./mvnw dependency:resolve --no-transfer-progress
+      - name: Build all modules (install to local repo)
+        env:
+          DB_HOST: localhost
+          DB_USER: twende
+          DB_PASSWORD: twende
+          REDIS_HOST: localhost
+          SMS_DEV_MODE: "true"
+        run: ./mvnw clean install --no-transfer-progress
 
-      - name: Trivy filesystem scan (dependencies)
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: '**/target/surefire-reports/'
+          retention-days: 14
+
+  # ──────────────────────────────────────────────
+  # Stage 3: Security scanning (Trivy)
+  # ──────────────────────────────────────────────
+  security-scan:
+    name: Trivy Dependency Scan
+    needs: [build-and-test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          cache: maven
+
+      - name: Install common-lib and resolve dependencies
+        run: ./mvnw install -DskipTests --no-transfer-progress
+
+      - name: Trivy filesystem scan
         uses: aquasecurity/trivy-action@v0.35.0
         with:
           scan-type: fs
@@ -88,250 +136,34 @@ jobs:
           sarif_file: trivy-fs-results.sarif
           category: trivy-dependency-scan
 
-  sast:
-    name: Static Analysis (CodeQL)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: java-kotlin
-
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ env.JAVA_VERSION }}
-          distribution: ${{ env.JAVA_DISTRIBUTION }}
-          cache: maven
-
-      - name: Build for CodeQL
-        run: ./mvnw compile --no-transfer-progress -DskipTests
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
-        with:
-          category: /language:java-kotlin
-
   # ──────────────────────────────────────────────
-  # Stage 3: Test + Coverage (gate: 80%)
+  # Stage 4: Static Analysis (CodeQL)
+  # Skipped until real source code exists
   # ──────────────────────────────────────────────
-  test:
-    name: Test & Coverage
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: twende_test
-          POSTGRES_USER: twende
-          POSTGRES_PASSWORD: twende
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U twende -d twende_test"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ env.JAVA_VERSION }}
-          distribution: ${{ env.JAVA_DISTRIBUTION }}
-          cache: maven
-
-      - name: Run tests with coverage
-        env:
-          DB_HOST: localhost
-          DB_USER: twende
-          DB_PASSWORD: twende
-          REDIS_HOST: localhost
-          SMS_DEV_MODE: "true"
-        run: ./mvnw verify --no-transfer-progress
-
-      - name: Upload JaCoCo coverage report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: jacoco-report
-          path: target/site/jacoco/
-          retention-days: 14
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: target/surefire-reports/
-          retention-days: 14
-
-  # ──────────────────────────────────────────────
-  # Stage 4: Build JAR artifact
-  # ──────────────────────────────────────────────
-  build:
-    name: Build
-    needs: [lint, test]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ env.JAVA_VERSION }}
-          distribution: ${{ env.JAVA_DISTRIBUTION }}
-          cache: maven
-
-      - name: Build JAR
-        run: ./mvnw package --no-transfer-progress -DskipTests
-
-      - name: Upload JAR artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: twende-jar
-          path: target/twende-*.jar
-          retention-days: 7
-
-  # ──────────────────────────────────────────────
-  # Stage 5: Build & scan container image (Trivy)
-  # ──────────────────────────────────────────────
-  container:
-    name: Container Build & Scan
-    needs: [build]
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push'
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download JAR artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: twende-jar
-          path: target/
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build container image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: false
-          load: true
-          tags: ${{ env.IMAGE_NAME }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Trivy container image scan
-        uses: aquasecurity/trivy-action@v0.35.0
-        with:
-          scan-type: image
-          image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
-          scanners: vuln
-          severity: CRITICAL,HIGH
-          exit-code: 1
-          ignore-unfixed: true
-          format: table
-
-      - name: Trivy container scan (SARIF)
-        uses: aquasecurity/trivy-action@v0.35.0
-        if: always()
-        with:
-          scan-type: image
-          image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
-          scanners: vuln
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          format: sarif
-          output: trivy-image-results.sarif
-
-      - name: Upload Trivy image SARIF to GitHub Security
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: trivy-image-results.sarif
-          category: trivy-container-scan
-
-  # ──────────────────────────────────────────────
-  # Stage 6: Publish container image (main only)
-  # ──────────────────────────────────────────────
-  publish:
-    name: Publish Container Image
-    needs: [container, security-scan, sast]
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download JAR artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: twende-jar
-          path: target/
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=sha,prefix=
-            type=raw,value=latest
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-
-  # ──────────────────────────────────────────────
-  # Stage 7: Deploy (placeholder — enable when
-  # dev server is provisioned)
-  # ──────────────────────────────────────────────
-  # deploy-dev:
-  #   name: Deploy to Dev
-  #   needs: [publish]
+  # sast:
+  #   name: Static Analysis (CodeQL)
   #   runs-on: ubuntu-latest
-  #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-  #   environment: dev
   #   steps:
-  #     - name: Deploy to dev server
-  #       run: |
-  #         echo "TODO: Add deployment steps"
-  #         # Options:
-  #         # 1. SSH + docker pull + docker compose up
-  #         # 2. kubectl set image (Kubernetes)
-  #         # 3. AWS ECS update-service
-  #         # 4. Kamal deploy (Rails-style Docker deploys)
-  #         #
-  #         # Required secrets:
-  #         # - DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY
-  #         # - Or cloud-specific credentials
+  #     - uses: actions/checkout@v4
+  #     - uses: github/codeql-action/init@v3
+  #       with:
+  #         languages: java-kotlin
+  #     - uses: actions/setup-java@v4
+  #       with:
+  #         java-version: ${{ env.JAVA_VERSION }}
+  #         distribution: ${{ env.JAVA_DISTRIBUTION }}
+  #         cache: maven
+  #     - run: ./mvnw compile --no-transfer-progress -DskipTests
+  #     - uses: github/codeql-action/analyze@v3
+  #       with:
+  #         category: /language:java-kotlin
+
+  # ──────────────────────────────────────────────
+  # Stage 5: Deploy (placeholder)
+  # ──────────────────────────────────────────────
+  # Container build, scan, and publish will be re-enabled
+  # once per-service Dockerfiles are in place.
+  # Each service will get its own image:
+  #   ghcr.io/alwatan/auth-service:sha
+  #   ghcr.io/alwatan/ride-service:sha
+  #   etc.
