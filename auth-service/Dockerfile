@@ -1,11 +1,11 @@
 # Stage 1: Build
 FROM eclipse-temurin:21-jdk-alpine AS build
+RUN apk add --no-cache curl
 WORKDIR /workspace
 COPY pom.xml .
 COPY common-lib common-lib
 COPY auth-service auth-service
 COPY mvnw .
-COPY .mvn .mvn
 RUN chmod +x mvnw \
     && ./mvnw -pl common-lib install -DskipTests -q \
     && ./mvnw -pl auth-service package -DskipTests -q

@@ -928,7 +928,6 @@ COPY pom.xml .
 COPY common-lib common-lib
 COPY {service-name} {service-name}
 COPY mvnw .
-COPY .mvn .mvn
 RUN chmod +x mvnw \
     && ./mvnw -pl common-lib install -DskipTests -q \
     && ./mvnw -pl {service-name} package -DskipTests -q
@@ -957,7 +956,6 @@ WORKDIR /workspace
 COPY pom.xml .
 COPY api-gateway api-gateway
 COPY mvnw .
-COPY .mvn .mvn
 RUN chmod +x mvnw \
     && ./mvnw -pl api-gateway package -DskipTests -q
 

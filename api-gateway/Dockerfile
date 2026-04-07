@@ -1,10 +1,10 @@
 # Stage 1: Build
 FROM eclipse-temurin:21-jdk-alpine AS build
+RUN apk add --no-cache curl
 WORKDIR /workspace
 COPY pom.xml .
 COPY api-gateway api-gateway
 COPY mvnw .
-COPY .mvn .mvn
 RUN chmod +x mvnw \
     && ./mvnw -pl api-gateway package -DskipTests -q
 
