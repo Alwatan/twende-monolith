@@ -725,7 +725,10 @@ public class SubscriptionExpiredEvent extends KafkaEvent {
 public class UserRegisteredEvent extends KafkaEvent {
     private UUID userId;
     private String fullName;
-    private String phoneNumber;
+    private String phoneNumber;    // nullable for social-only users
+    private String email;          // from social provider or manual entry
+    private String profilePhotoUrl; // from Google, null for Apple/phone
+    private String authProvider;   // PHONE, GOOGLE, APPLE
     private UserRole role;
 }
 ```

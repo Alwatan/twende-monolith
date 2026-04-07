@@ -565,6 +565,33 @@ java -jar user-service/target/user-service-*.jar
 
 ---
 
+## Social Login Profile Handling (Phase 2)
+
+When a user registers via Google or Apple social login, the `UserRegisteredEvent` includes
+pre-populated profile data:
+
+- **Google**: `fullName`, `email`, `profilePhotoUrl` — all available
+- **Apple**: `fullName`, `email` — no photo URL
+- **Phone OTP**: `fullName` only (from registration step)
+
+### What user-service does on `UserRegisteredEvent`:
+
+- Set `fullName` from event (always present)
+- Set `email` from event (present for social login, may be null for phone-only)
+- If `profilePhotoUrl` is present (Google login): download the image, upload to MinIO,
+  store the MinIO URL in `profile_photo_url` (Google URLs expire, so we must persist locally)
+- If `phoneNumber` is null (social-only user): profile is created but phone is missing.
+  User can add phone later via auth-service's `/link/phone` endpoint, which triggers an
+  updated event.
+
+### Key Rules
+
+- Never store external photo URLs directly — always download to MinIO
+- A user with no phone number can browse but cannot book rides (phone required for driver contact)
+- Email uniqueness is enforced at auth-service level, not user-service
+
+---
+
 ## Charter, Cargo & Flat Fee Expansion (Phase 7-9)
 
 ### User Roles in Context (Phase 7)

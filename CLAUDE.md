@@ -808,7 +808,12 @@ to build each service, refer to the **"Implementation Steps"** section in that s
 - [ ] `auth-service` — see `auth-service/CLAUDE.md` → Implementation Steps
 - [ ] `api-gateway` — see `api-gateway/CLAUDE.md` → Implementation Steps
 
-### Phase 2 — Core Data
+### Phase 2 — Core Data + Social Login
+- [ ] `auth-service` (enhancement) — add Google and Apple social login as alternative to OTP.
+      New `authProvider` field (PHONE, GOOGLE, APPLE) on AuthUser. Spring Security OAuth2
+      Client for Google + Sign in with Apple (OIDC). Auto-populate fullName, email,
+      profilePhotoUrl from social profile. Phone number prompt after social login if missing.
+      Account linking by email. `UserRegisteredEvent` extended with profilePhotoUrl + email.
 - [ ] `country-config-service` — see `country-config-service/CLAUDE.md` → Implementation Steps
 - [ ] `user-service` — see `user-service/CLAUDE.md` → Implementation Steps
 - [ ] `driver-service` — see `driver-service/CLAUDE.md` → Implementation Steps

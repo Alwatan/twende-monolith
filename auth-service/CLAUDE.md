@@ -438,6 +438,98 @@ OTP delivery. The Africa's Talking dependency should be removed from `pom.xml` i
 
 ---
 
+## Social Login (Phase 2 Enhancement)
+
+Google and Apple social login as alternatives to phone OTP. Users can sign up/log in
+without typing their name or uploading a profile picture.
+
+### Auth Providers
+
+| Provider | What we get | Notes |
+|----------|-------------|-------|
+| **Google** | Full name, email, profile photo URL | Standard OAuth2/OIDC via `spring-boot-starter-oauth2-client` |
+| **Apple** | Full name, email | Sign in with Apple (OIDC). Apple only sends name on first auth — must store it immediately |
+
+### Data Model Changes
+
+- **AuthUser** gains: `authProvider VARCHAR(10)` (PHONE, GOOGLE, APPLE), `email VARCHAR(255) UNIQUE`,
+  `profilePhotoUrl VARCHAR(500)`. Phone number becomes nullable (social-only users may not have one yet).
+- **New table:** `auth_user_links` — links multiple auth methods to one account
+  (userId UUID FK, provider VARCHAR(10), providerUserId VARCHAR(255), email VARCHAR(255), UNIQUE(provider, providerUserId))
+- **Flyway migration:** `V2__social_login.sql`
+
+### New Enum
+
+```java
+public enum AuthProvider {
+    PHONE,
+    GOOGLE,
+    APPLE
+}
+```
+
+### Flow: Social Login
+
+```
+1. Mobile app initiates Google/Apple OAuth2 flow (native SDK)
+2. App receives ID token from Google/Apple
+3. App sends ID token to: POST /api/v1/auth/social/login { provider: "GOOGLE", idToken: "eyJ..." }
+4. Auth-service:
+   a. Verify ID token with provider (Google: verify via google-auth-library or JWKS, Apple: verify via Apple JWKS)
+   b. Extract: email, fullName, profilePhotoUrl (Google), or email, fullName (Apple)
+   c. Look up AuthUser by email
+   d. If found: issue JWT tokens (existing user)
+   e. If not found: create AuthUser with authProvider=GOOGLE/APPLE, pre-fill name/email/photo,
+      publish UserRegisteredEvent, issue JWT tokens with isNewUser=true
+   f. If user has no phone number: include `phoneRequired: true` in response
+5. If phoneRequired: app prompts for phone number, user does OTP verify to link phone
+```
+
+### Account Linking
+
+- One user can have multiple auth methods: phone + Google + Apple
+- Linking is by **email**: if a Google user has the same email as an existing phone user, they're the same person
+- User can add phone number after social login via: `POST /api/v1/auth/link/phone` (triggers OTP flow)
+- User can link social account after phone login via: `POST /api/v1/auth/link/social`
+
+### New Endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/v1/auth/social/login` | Public | Social login with provider ID token |
+| `POST` | `/api/v1/auth/link/phone` | Authenticated | Link phone number to social account (starts OTP flow) |
+| `POST` | `/api/v1/auth/link/social` | Authenticated | Link social account to phone account |
+
+### UserRegisteredEvent Update
+
+Add fields: `email`, `profilePhotoUrl`, `authProvider`. These flow through to user-service
+and driver-service so profiles are pre-populated from social data.
+
+### Configuration
+
+```yaml
+twende:
+  auth:
+    google:
+      client-id: ${GOOGLE_CLIENT_ID:}
+      # ID token verified using Google's public JWKS (no client secret needed for mobile)
+    apple:
+      client-id: ${APPLE_CLIENT_ID:}    # App's Services ID
+      team-id: ${APPLE_TEAM_ID:}
+      key-id: ${APPLE_KEY_ID:}
+      private-key: ${APPLE_PRIVATE_KEY:}  # .p8 key contents
+```
+
+### Key Rules
+
+- Social login is an **alternative** to OTP, not a replacement — phone OTP always available
+- Phone number is **required for rides** (driver needs to contact rider) — prompt after social login
+- Apple only sends the user's name on the **first authorization** — store it immediately, it won't come again
+- Profile photo URL from Google may expire — user-service should download and store in MinIO
+- Never store social provider access/refresh tokens — we only need the ID token for verification
+
+---
+
 ## Implementation Steps
 
 Build in this order. Each step should compile and pass tests before moving to the next.
