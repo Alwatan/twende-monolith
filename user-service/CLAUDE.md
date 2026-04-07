@@ -565,6 +565,124 @@ java -jar user-service/target/user-service-*.jar
 
 ---
 
+## Destination Suggestions (Phase 3 Enhancement)
+
+Show users their frequent destinations and recent ride history based on their current
+region. Appears on the "Where to?" screen in the app.
+
+### What the user sees
+
+```
+⭐ Frequent
+  🏠 Home (Mikocheni)
+  🏢 Office (CBD)
+  🛒 Kariakoo Market
+
+🕐 Recent (Dar es Salaam)
+  Mlimani City → yesterday
+  JNIA Airport → 3 days ago
+```
+
+### New Endpoint
+
+```
+GET /api/v1/users/me/suggestions?lat={lat}&lng={lng}
+```
+
+Returns frequent destinations + recent history for the user's current region.
+
+### Response
+
+```java
+public class DestinationSuggestionsDto {
+    private List<FrequentDestinationDto> frequent;   // max 4
+    private List<RecentRideDto> recent;               // max 5
+}
+
+public class FrequentDestinationDto {
+    private String address;
+    private BigDecimal latitude;
+    private BigDecimal longitude;
+    private int visitCount;
+    private Instant lastVisitedAt;
+}
+
+public class RecentRideDto {
+    private UUID rideId;
+    private String dropoffAddress;
+    private BigDecimal dropoffLat;
+    private BigDecimal dropoffLng;
+    private Instant completedAt;
+    private BigDecimal fare;
+    private String currencyCode;
+}
+```
+
+### New Table: `user_destination_stats`
+
+```sql
+CREATE TABLE user_destination_stats (
+    id              UUID PRIMARY KEY,
+    user_id         UUID NOT NULL REFERENCES users(id),
+    city_id         UUID NOT NULL,
+    country_code    CHAR(2) NOT NULL,
+    address         VARCHAR(300) NOT NULL,
+    latitude        NUMERIC(10,4) NOT NULL,   -- rounded to ~11m for grouping
+    longitude       NUMERIC(10,4) NOT NULL,
+    visit_count     INT NOT NULL DEFAULT 1,
+    last_visited_at TIMESTAMPTZ NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(user_id, latitude, longitude)
+);
+
+CREATE INDEX idx_dest_stats_user_city ON user_destination_stats(user_id, city_id, visit_count DESC);
+```
+
+### How it works
+
+**Frequent destinations (precomputed):**
+
+1. `RideCompletedEvent` arrives via Kafka
+2. Round dropoff coordinates to 4 decimal places (~11m precision) for grouping
+3. Upsert into `user_destination_stats`: if exists, increment `visit_count` + update
+   `last_visited_at`; if not, insert new row
+4. On `GET /suggestions`: resolve current cityId from lat/lng (call location-service or
+   country-config-service), query top 3 destinations for that city by visit_count
+5. Always show saved places (Home, Work) first if they exist, then frequent destinations,
+   max 4 total
+
+**Recent history (real-time query):**
+
+1. On `GET /suggestions`: call ride-service internal API
+   `GET /internal/rides/history?userId=&cityId=&limit=5`
+2. Return the last 5 completed rides in the user's current city
+
+### Kafka Consumer
+
+```java
+@KafkaListener(topics = "twende.rides.completed")
+public void onRideCompleted(RideCompletedEvent event) {
+    BigDecimal lat = roundTo4Dp(event.getDropoffLat());
+    BigDecimal lng = roundTo4Dp(event.getDropoffLng());
+    destinationStatsRepository.upsertVisit(
+        event.getRiderId(), event.getCityId(), event.getCountryCode(),
+        event.getDropoffAddress(), lat, lng);
+}
+```
+
+### Key Rules
+
+- Frequent destinations are **per city** — moving to a new city shows that city's frequents
+- Current city detected from `lat`/`lng` query param (user's GPS position)
+- Coordinates rounded to 4 decimal places for grouping (~11m, so "same building" counts as same destination)
+- Saved places (Home, Work) always rank above frequent destinations
+- Max 4 frequent + max 5 recent = compact UI
+- If user has no ride history in current city, return empty lists (not an error)
+- Flyway migration: `V2__user_destination_stats.sql`
+
+---
+
 ## Social Login Profile Handling (Phase 2)
 
 When a user registers via Google or Apple social login, the `UserRegisteredEvent` includes

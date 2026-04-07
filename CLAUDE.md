@@ -823,6 +823,12 @@ to build each service, refer to the **"Implementation Steps"** section in that s
 - [ ] `pricing-service` — see `pricing-service/CLAUDE.md` → Implementation Steps
 - [ ] `matching-service` — see `matching-service/CLAUDE.md` → Implementation Steps
 - [ ] `ride-service` — see `ride-service/CLAUDE.md` → Implementation Steps
+- [ ] `user-service` (enhancement) — destination suggestions: frequent destinations
+      (precomputed from ride history, top 3 per city) + recent rides by region.
+      New table `user_destination_stats`, Kafka consumer for `RideCompletedEvent`,
+      new endpoint `GET /api/v1/users/me/suggestions?lat=&lng=`.
+- [ ] `ride-service` (enhancement) — internal endpoint `GET /internal/rides/history`
+      for user-service to fetch recent rides by userId + cityId.
 
 ### Phase 4 — Commerce
 - [ ] `payment-service` — see `payment-service/CLAUDE.md` → Implementation Steps

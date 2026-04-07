@@ -836,6 +836,52 @@ void givenApplicableFreeRideOffer_whenRiderCreatesRide_thenRideMarkedFreeAndOffe
 
 ---
 
+## Ride History Internal API (Phase 3 Enhancement)
+
+New internal endpoint for user-service to fetch recent rides and build destination suggestions.
+
+### Endpoint
+
+```
+GET /internal/rides/history?userId={uuid}&cityId={uuid}&limit=5
+```
+
+Returns the user's most recent completed rides in a given city, ordered by `completedAt` DESC.
+
+### Response
+
+```java
+public class RideHistorySummaryDto {
+    private UUID rideId;
+    private BigDecimal pickupLat;
+    private BigDecimal pickupLng;
+    private String pickupAddress;
+    private BigDecimal dropoffLat;
+    private BigDecimal dropoffLng;
+    private String dropoffAddress;
+    private Instant completedAt;
+    private VehicleType vehicleType;
+    private BigDecimal finalFare;
+    private String currencyCode;
+}
+```
+
+### Repository Query
+
+```java
+List<Ride> findByRiderIdAndCityIdAndStatusOrderByCompletedAtDesc(
+    UUID riderId, UUID cityId, RideStatus status, Pageable pageable);
+```
+
+### Key Rules
+
+- Only return `COMPLETED` rides (not cancelled or in-progress)
+- Limit max 10 results per request
+- This endpoint is internal (`/internal/**`) — not routed through API gateway
+- No authentication needed (service-to-service trust)
+
+---
+
 ## Charter, Cargo & Flat Fee Expansion (Phase 7-9)
 
 ### New Ride Entity Fields (Phase 7)
