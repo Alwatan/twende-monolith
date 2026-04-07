@@ -18,11 +18,13 @@ CREATE TABLE users (
 CREATE TABLE saved_places (
     id           UUID         PRIMARY KEY,
     user_id      UUID         NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    country_code CHAR(2)      NOT NULL,
     label        VARCHAR(50)  NOT NULL,
     address      VARCHAR(300) NOT NULL,
     latitude     DOUBLE PRECISION NOT NULL,
     longitude    DOUBLE PRECISION NOT NULL,
-    created_at   TIMESTAMPTZ  NOT NULL DEFAULT now()
+    created_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_saved_places_user ON saved_places(user_id);
