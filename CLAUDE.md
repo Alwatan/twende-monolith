@@ -239,9 +239,13 @@ com.twende
     │   ├── entity/NotificationTemplate.java
     │   ├── repository/...
     │   ├── service/NotificationService.java
-    │   ├── service/FcmService.java
-    │   ├── service/SmsService.java
     │   ├── service/TemplateResolver.java
+    │   ├── provider/SmsProvider.java              # Interface
+    │   ├── provider/PushProvider.java             # Interface
+    │   ├── provider/sms/AfricasTalkingSmsProvider.java   # RestClient, no SDK
+    │   ├── provider/sms/TwilioSmsProvider.java           # Stub — for Kenya etc.
+    │   ├── provider/push/FcmPushProvider.java            # Firebase Admin SDK
+    │   ├── provider/push/OneSignalPushProvider.java       # Stub — alternative
     │   └── controller/NotificationController.java
     ├── rating/
     │   ├── entity/Rating.java
@@ -558,7 +562,7 @@ if (count > 3) throw new TooManyRequestsException("Too many OTP requests");
 types, pricing, payment methods, regulatory requirements, feature flags.
 
 **Key entities:**
-- `CountryConfig(code CHAR(2) PK, name, status, defaultLocale, currencyCode, currencySymbol, minorUnits, phonePrefix, cashEnabled, subscriptionAggregator, regulatoryAuthority, tripReportingRequired, features JSONB)`
+- `CountryConfig(code CHAR(2) PK, name, status, defaultLocale, currencyCode, currencySymbol, minorUnits, phonePrefix, cashEnabled, subscriptionAggregator, regulatoryAuthority, tripReportingRequired, smsProvider VARCHAR(30) DEFAULT 'AFRICASTALKING', pushProvider VARCHAR(30) DEFAULT 'FCM', features JSONB)`
 - `VehicleTypeConfig(id UUID, countryCode, vehicleType, displayName, maxPassengers, baseFare NUMERIC(12,2), perKm NUMERIC(12,2), perMinute NUMERIC(12,2), minimumFare NUMERIC(12,2), cancellationFee NUMERIC(12,2), surgeMultiplierCap NUMERIC(4,2), isActive BOOLEAN)`
 - `OperatingCity(id UUID, countryCode, cityId, name, timezone, status, centerLat, centerLng, radiusKm, geocodingProvider VARCHAR(30) DEFAULT 'GOOGLE', routingProvider VARCHAR(30) DEFAULT 'GOOGLE', autocompleteProvider VARCHAR(30) DEFAULT 'GOOGLE')`
 
@@ -1186,25 +1190,116 @@ public void expireSubscriptions() { ... }
 
 ### Module: notification
 
-**Purpose:** Push (FCM), SMS (Africa's Talking REST API), in-app, email. Event-driven — no outbound
+**Purpose:** Push notifications, SMS, in-app, email. Event-driven — no outbound
 REST API called by other modules. Other modules publish Spring events; this module listens.
+Uses provider abstraction for SMS and push — enables per-country provider switching.
 
 **Template resolution:** Resolve by `templateKey + locale` (fall back to `en`).
+
+**SMS provider abstraction:**
+```java
+public interface SmsProvider {
+    String getId();  // "africastalking", "twilio", "beem"
+    void sendSms(String phoneNumber, String message);
+    boolean supportsCountry(String countryCode);
+}
+```
+
+`AfricasTalkingSmsProvider` calls the AT REST API via `RestClient` (no SDK).
+Provider resolution is per-country: `countryConfig.smsProvider` determines which
+implementation handles SMS for that country. Tanzania uses Africa's Talking,
+Kenya could use Twilio or Beem.
+
+```java
+@Component
+public class AfricasTalkingSmsProvider implements SmsProvider {
+    private final RestClient restClient;
+
+    @Override
+    public void sendSms(String phoneNumber, String message) {
+        restClient.post()
+            .uri("/messaging")
+            .body("username=" + username
+                + "&to=" + URLEncoder.encode(phoneNumber, StandardCharsets.UTF_8)
+                + "&message=" + URLEncoder.encode(message, StandardCharsets.UTF_8)
+                + "&from=" + senderId)
+            .retrieve()
+            .toBodilessEntity();
+    }
+
+    @Override
+    public boolean supportsCountry(String countryCode) {
+        return Set.of("TZ", "KE", "UG").contains(countryCode);
+    }
+}
+```
+
+**Push provider abstraction:**
+```java
+public interface PushProvider {
+    String getId();  // "fcm", "onesignal"
+    void sendNotification(UUID userId, String title, String body, Map<String, String> data);
+    void sendData(UUID userId, Map<String, String> data);
+}
+```
+
+`FcmPushProvider` uses Firebase Admin SDK. Other providers (OneSignal, HMS for Huawei)
+can be added without changing notification service logic.
+
+```java
+@Component
+public class FcmPushProvider implements PushProvider {
+    @Override
+    public void sendData(UUID userId, Map<String, String> data) {
+        String token = fcmTokenRepository.findLatestByUserId(userId)
+            .orElseThrow(() -> new ResourceNotFoundException("No FCM token for user"));
+        Message message = Message.builder()
+            .putAllData(data)
+            .setToken(token)
+            .build();
+        FirebaseMessaging.getInstance().send(message);
+    }
+}
+```
+
+**NotificationService — delegates to providers:**
+```java
+@Service
+public class NotificationService {
+    private final Map<String, SmsProvider> smsProviders;
+    private final Map<String, PushProvider> pushProviders;
+    private final CountryConfigService countryConfigService;
+
+    public void sendSms(String countryCode, String phoneNumber, String message) {
+        if (devMode) { log.info("DEV SMS to {}: {}", phoneNumber, message); return; }
+        CountryConfig config = countryConfigService.getConfig(countryCode);
+        SmsProvider provider = smsProviders.get(config.getSmsProvider().toLowerCase());
+        provider.sendSms(phoneNumber, message);
+    }
+
+    public void sendPush(String countryCode, UUID userId, String title, String body, Map<String, String> data) {
+        CountryConfig config = countryConfigService.getConfig(countryCode);
+        PushProvider provider = pushProviders.get(config.getPushProvider().toLowerCase());
+        provider.sendNotification(userId, title, body, data);
+    }
+}
+```
 
 **Key event listeners:**
 ```java
 @EventListener @Async
 public void onTripOtpGenerated(TripStartOtpGeneratedEvent event) {
-    // Send push to rider with OTP code in FCM data payload
-    fcmService.sendData(event.getRide().getRiderId(), Map.of(
-        "type", "TRIP_OTP",
-        "otp", event.getOtp(),         // IMPORTANT: in data payload, not notification body
-        "rideId", event.getRide().getId().toString()
-    ));
+    // Send push to rider with OTP code via push provider
+    notificationService.sendPushData(event.getRide().getCountryCode(),
+        event.getRide().getRiderId(), Map.of(
+            "type", "TRIP_OTP",
+            "otp", event.getOtp(),
+            "rideId", event.getRide().getId().toString()
+        ));
 }
 ```
 
-**FCM data vs notification payload — important distinction:**
+**Push data vs notification payload — important distinction:**
 - Use `notification` payload for messages shown when app is in background
 - Use `data` payload for messages the app handles programmatically (OTP display, live updates)
 - For OTP and rejection counter updates: `data` only (app handles rendering)
@@ -1517,54 +1612,26 @@ Uncomment the `deploy-dev` job in `ci.yml` and configure:
 
 ## 12. External Integrations
 
-### Africa's Talking (SMS + OTP) — via REST API, no SDK
-We call the Africa's Talking SMS API directly using Spring's `RestClient`.
-No third-party SDK dependency — avoids transitive vulnerability issues.
+### SMS (Africa's Talking, Twilio, etc.) — via SmsProvider abstraction
+All SMS sending goes through `SmsProvider` interface in the notification module.
+`CountryConfig.smsProvider` determines which implementation is used per country.
+No third-party SDK — all providers use Spring `RestClient` directly.
 
-```java
-@Component
-public class AfricasTalkingSmsClient {
-    private final RestClient restClient;
-
-    public AfricasTalkingSmsClient(
-            @Value("${twende.africastalking.api-key}") String apiKey,
-            @Value("${twende.africastalking.username}") String username,
-            @Value("${twende.africastalking.sender-id}") String senderId) {
-        this.restClient = RestClient.builder()
-            .baseUrl("https://api.africastalking.com/version1")
-            .defaultHeader("apiKey", apiKey)
-            .defaultHeader("Content-Type", "application/x-www-form-urlencoded")
-            .defaultHeader("Accept", "application/json")
-            .build();
-        this.username = username;
-        this.senderId = senderId;
-    }
-
-    public void sendSms(String phoneNumber, String message) {
-        restClient.post()
-            .uri("/messaging")
-            .body("username=" + username
-                + "&to=" + URLEncoder.encode(phoneNumber, StandardCharsets.UTF_8)
-                + "&message=" + URLEncoder.encode(message, StandardCharsets.UTF_8)
-                + "&from=" + senderId)
-            .retrieve()
-            .toBodilessEntity();
-    }
-}
-```
+See Module: notification specification for `AfricasTalkingSmsProvider` implementation.
 In dev: set `twende.sms.dev-mode=true` to log OTP to console instead of sending.
 
-### Firebase Cloud Messaging (push)
+### Push Notifications (FCM, OneSignal, etc.) — via PushProvider abstraction
+All push notifications go through `PushProvider` interface in the notification module.
+`CountryConfig.pushProvider` determines which implementation is used per country.
+`FcmPushProvider` uses Firebase Admin SDK. Other providers can be added.
+
+See Module: notification specification for `FcmPushProvider` implementation.
+
+Firebase initialization:
 ```java
 FirebaseApp.initializeApp(FirebaseOptions.builder()
     .setCredentials(GoogleCredentials.fromStream(new ByteArrayInputStream(serviceAccountJson.getBytes())))
     .build());
-
-Message message = Message.builder()
-    .putAllData(dataMap)          // data payload — for OTP, live updates
-    .setToken(fcmToken)
-    .build();
-FirebaseMessaging.getInstance().send(message);
 ```
 
 ### Google Maps (geocoding, routing, ETA, autocomplete) — via REST API, no SDK
@@ -1752,3 +1819,10 @@ logging:
 
 19. **Google Maps API key is never exposed to clients** — all mapping API calls are
     server-side via the location module. Frontend gets results from our endpoints only.
+
+20. **SMS and push provider switching is per-country** — `CountryConfig.smsProvider` and
+    `CountryConfig.pushProvider` determine which implementation handles notifications.
+    Changing a provider for one country must not affect other countries.
+
+21. **No modules call SMS/push providers directly** — all notification sending goes through
+    `NotificationService` in the notification module. Other modules publish Spring events only.
