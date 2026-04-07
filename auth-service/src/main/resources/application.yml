@@ -1,0 +1,59 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: auth-service
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:5432/twende_auth
+    username: ${DB_USER:twende}
+    password: ${DB_PASSWORD:twende}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: 6379
+      password: ${REDIS_PASSWORD:}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+twende:
+  auth:
+    otp:
+      length: 6
+      expiry-minutes: 5
+      max-attempts: 3
+      max-requests-per-window: 3
+      window-minutes: 10
+      dev-mode: ${SMS_DEV_MODE:true}
+    jwt:
+      access-token-ttl-seconds: 3600
+      refresh-token-ttl-days: 30
+      keystore-path: ${JWT_KEYSTORE_PATH:}
+      keystore-password: ${JWT_KEYSTORE_PASSWORD:}
+    africastalking:
+      api-key: ${AT_API_KEY:}
+      username: ${AT_USERNAME:sandbox}
+      sender-id: "TWENDE"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  tracing:
+    sampling:
+      probability: 1.0
+
+logging:
+  level:
+    com.twende: DEBUG
+    org.springframework.security: WARN
