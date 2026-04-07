@@ -422,4 +422,6 @@ void givenSelcomFailure_whenSubscriptionPayment_thenTransactionMarkedProcessingA
 - [ ] 9. `RetryScheduler`: `@Scheduled(fixedDelay = 300_000)`, find `PROCESSING` transactions older than 5 min, retry via `PaymentGateway`, mark `COMPLETED` or `FAILED`
 - [ ] 10. `PaymentController` (driver-facing: wallet, earnings, withdraw, cash-declare) + internal endpoints (`/internal/payments/ride`, `/internal/payments/subscription`, `/internal/payments/refund`, `/internal/payments/{id}`)
 - [ ] 11. Flyway migration `V1__create_payment_schema.sql` with all tables and indexes
-- [ ] 12. Unit tests + integration tests (Testcontainers for PostgreSQL, Redis, Kafka; WireMock for Selcom), verify >= 80% coverage with `./mvnw verify`
+- [ ] 12. Dockerfile — Multi-stage build (eclipse-temurin:21-jdk-alpine for build, 21-jre-alpine for run). Non-root `twende` user. Health check on `/actuator/health`. Expose port 8089.
+- [ ] 13. OpenAPI config — `OpenApiConfig.java` with SpringDoc `OpenAPI` bean. Title: "Payment Service API". Swagger UI at `/swagger-ui.html`.
+- [ ] 14. Unit tests + integration tests (Testcontainers for PostgreSQL, Redis, Kafka; WireMock for Selcom), verify >= 80% coverage with `./mvnw verify`

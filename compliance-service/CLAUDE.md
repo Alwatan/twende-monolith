@@ -723,4 +723,6 @@ void givenKenyaCountryCode_whenBatchRuns_thenSkippedBecauseReportingNotRequired(
 - [ ] 8. `ComplianceController` (GET `/api/v1/compliance/reports` with filters, GET `/api/v1/compliance/reports/{id}`, GET `/api/v1/compliance/reports/stats`, POST `/api/v1/compliance/reports/retry`) + `AuditLogController` (GET `/api/v1/compliance/audit-log` with filters) -- all require ADMIN role
 - [ ] 9. `ComplianceException` for adapter submission failures
 - [ ] 10. Flyway migration: `V1__create_compliance_schema.sql` (both tables + all indexes, partial index on `submitted = false`)
-- [ ] 11. Unit tests + integration tests (Testcontainers for PostgreSQL and Kafka; WireMock for SUMATRA API), verify >= 80% coverage with `./mvnw -pl compliance-service verify`
+- [ ] 11. Dockerfile — Multi-stage build (eclipse-temurin:21-jdk-alpine for build, 21-jre-alpine for run). Non-root `twende` user. Health check on `/actuator/health`. Expose port 8094.
+- [ ] 12. OpenAPI config — `OpenApiConfig.java` with SpringDoc `OpenAPI` bean. Title: "Compliance Service API". Swagger UI at `/swagger-ui.html`.
+- [ ] 13. Unit tests + integration tests (Testcontainers for PostgreSQL and Kafka; WireMock for SUMATRA API), verify >= 80% coverage with `./mvnw -pl compliance-service verify`

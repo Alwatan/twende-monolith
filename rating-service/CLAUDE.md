@@ -502,4 +502,6 @@ void givenMultipleRatings_whenAggregateQueried_thenCorrectAverageComputed() { ..
 - [ ] 7. Kafka producer: `RatingEventPublisher` publishing `RatingSubmittedEvent` to `twende.ratings.submitted` (key: `{countryCode}:{rideId}`)
 - [ ] 8. `RatingController` (POST `/api/v1/ratings`, GET `/api/v1/ratings/driver/{driverId}`, GET `/api/v1/ratings/me`) + `InternalRatingController` (GET `/internal/ratings/driver/{driverId}/score` -- plain DTO, no `ApiResponse` wrapper)
 - [ ] 9. Flyway migration: `V1__create_ratings_schema.sql` (table with UNIQUE(ride_id, rater_role), CHECK(score BETWEEN 1 AND 5), indexes)
-- [ ] 10. Unit tests + integration tests (Testcontainers for PostgreSQL, Redis, Kafka; WireMock for ride-service), verify >= 80% coverage with `./mvnw -pl rating-service verify`
+- [ ] 10. Dockerfile — Multi-stage build (eclipse-temurin:21-jdk-alpine for build, 21-jre-alpine for run). Non-root `twende` user. Health check on `/actuator/health`. Expose port 8092.
+- [ ] 11. OpenAPI config — `OpenApiConfig.java` with SpringDoc `OpenAPI` bean. Title: "Rating Service API". Swagger UI at `/swagger-ui.html`.
+- [ ] 12. Unit tests + integration tests (Testcontainers for PostgreSQL, Redis, Kafka; WireMock for ride-service), verify >= 80% coverage with `./mvnw -pl rating-service verify`

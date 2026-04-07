@@ -564,4 +564,6 @@ void givenOfferWith5KmMax_whenRideIs8Km_thenOfferNotApplicable() { ... }
 - [ ] 8. `LoyaltyController` (rider-facing: GET `/progress`, GET `/offers`, GET `/rules`) + admin PUT `/rules/{id}` + `LoyaltyInternalController` (GET `/internal/loyalty/offers/applicable`, POST `/internal/loyalty/offers/{id}/redeem`)
 - [ ] 9. Flyway migrations: `V1__create_loyalty_schema.sql` (tables + indexes), `V2__seed_loyalty_rules.sql` (Tanzania rules for BAJAJ, BODA_BODA, ECONOMY_CAR)
 - [ ] 10. MapStruct mapper: `LoyaltyMapper` for entity-to-DTO conversions
-- [ ] 11. Unit tests + integration tests (Testcontainers for PostgreSQL, Redis, Kafka), verify >= 80% coverage with `./mvnw verify`
+- [ ] 11. Dockerfile — Multi-stage build (eclipse-temurin:21-jdk-alpine for build, 21-jre-alpine for run). Non-root `twende` user. Health check on `/actuator/health`. Expose port 8095.
+- [ ] 12. OpenAPI config — `OpenApiConfig.java` with SpringDoc `OpenAPI` bean. Title: "Loyalty Service API". Swagger UI at `/swagger-ui.html`.
+- [ ] 13. Unit tests + integration tests (Testcontainers for PostgreSQL, Redis, Kafka), verify >= 80% coverage with `./mvnw verify`

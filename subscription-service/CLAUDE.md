@@ -311,4 +311,6 @@ void givenActiveSubscriptionPastExpiry_whenSchedulerRuns_thenMarkedExpiredAndEve
 - [ ] 6. Kafka producers: `twende.subscriptions.activated` (on successful purchase), `twende.subscriptions.expired` (on expiry)
 - [ ] 7. `SubscriptionController` (driver-facing: GET plans, GET current, POST purchase, GET history) + internal endpoint `GET /internal/subscriptions/{driverId}/active` returning `ApiResponse<Boolean>`
 - [ ] 8. Flyway migrations: `V1__create_subscription_schema.sql` (tables + indexes), `V2__seed_tanzania_plans.sql` (daily/weekly/monthly plans)
-- [ ] 9. Unit tests + integration tests (Testcontainers for PostgreSQL and Kafka; WireMock for payment-service), verify >= 80% coverage with `./mvnw verify`
+- [ ] 9. Dockerfile — Multi-stage build (eclipse-temurin:21-jdk-alpine for build, 21-jre-alpine for run). Non-root `twende` user. Health check on `/actuator/health`. Expose port 8090.
+- [ ] 10. OpenAPI config — `OpenApiConfig.java` with SpringDoc `OpenAPI` bean. Title: "Subscription Service API". Swagger UI at `/swagger-ui.html`.
+- [ ] 11. Unit tests + integration tests (Testcontainers for PostgreSQL and Kafka; WireMock for payment-service), verify >= 80% coverage with `./mvnw verify`

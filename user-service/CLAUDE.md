@@ -581,4 +581,6 @@ Work through these in order. Do not skip ahead.
 - [ ] **10. DTOs + MapStruct mapper** — Create `UserProfileDto`, `UpdateProfileRequest` (with validation annotations), `SavedPlaceDto`, `CreateSavedPlaceRequest`, `RideHistoryResponse`, Kafka event DTOs. Create `UserMapper` with MapStruct
 - [ ] **11. Flyway migration** — `V1__create_users_schema.sql` with `users` table (PK not auto-generated) and `saved_places` table with index on `user_id`
 - [ ] **12. Unit tests + integration tests** — Unit tests for `UserService`, `SavedPlaceService` (ownership validation), `UserRegisteredConsumer` (idempotency, role filtering). Integration tests with Testcontainers (PostgreSQL + Kafka) covering profile CRUD, saved places CRUD, Kafka consumption and publishing
-- [ ] **13. Verify build** — Run `./mvnw -pl user-service clean verify` and confirm all tests pass with minimum 80% line coverage
+- [ ] **13. Dockerfile** — Multi-stage build (eclipse-temurin:21-jdk-alpine for build, 21-jre-alpine for run). Non-root `twende` user. Health check on `/actuator/health`. Expose port 8083.
+- [ ] **14. OpenAPI config** — `OpenApiConfig.java` with SpringDoc `OpenAPI` bean. Title: "User Service API". Swagger UI at `/swagger-ui.html`.
+- [ ] **15. Verify build** — Run `./mvnw -pl user-service clean verify` and confirm all tests pass with minimum 80% line coverage

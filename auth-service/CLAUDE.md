@@ -459,4 +459,6 @@ Build in this order. Each step should compile and pass tests before moving to th
 - [ ] **15. Scheduled cleanup** — `@Scheduled` job to delete expired OTPs (`otp_codes` where `expires_at < now()`) and expired revoked tokens (`revoked_tokens` where `expires_at < now()`). Run daily.
 - [ ] **16. Unit tests** — OtpService: OTP generation, rate limiting (mock Redis), expiry/attempts logic, phone normalisation. TokenService: token issuance, revocation, blocklist check. AuthService: registration flow, duplicate registration guard. Aim for edge cases: expired OTP, max attempts, invalid phone format.
 - [ ] **17. Integration tests** — Testcontainers (PostgreSQL + Redis + Kafka). Full OTP flow: request -> verify -> receive tokens. Registration flow: verify OTP -> register -> check Kafka event published. Token revocation: logout -> verify token is rejected. Rate limiting: send 4 OTP requests, verify 4th is rejected (429).
-- [ ] **18. Verify** — Run `./mvnw -pl auth-service clean verify`. Confirm all tests pass and JaCoCo coverage >= 80% on non-entity/DTO/config classes.
+- [ ] **18. Dockerfile** — Multi-stage build (eclipse-temurin:21-jdk-alpine for build, 21-jre-alpine for run). Non-root `twende` user. Health check on `/actuator/health`. Expose port 8081.
+- [ ] **19. OpenAPI config** — `OpenApiConfig.java` with SpringDoc `OpenAPI` bean. Title: "Auth Service API". Swagger UI at `/swagger-ui.html`.
+- [ ] **20. Verify** — Run `./mvnw -pl auth-service clean verify`. Confirm all tests pass and JaCoCo coverage >= 80% on non-entity/DTO/config classes.

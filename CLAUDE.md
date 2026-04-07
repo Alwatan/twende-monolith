@@ -914,7 +914,73 @@ twende:
 
 ---
 
-## 18. Multi-Country Strategy
+## 18. Dockerfile Standard (All Services)
+
+Every service (except `common-lib`) must have a `Dockerfile` in its module root. Use this
+multi-stage template:
+
+```dockerfile
+# Stage 1: Build
+FROM eclipse-temurin:21-jdk-alpine AS build
+WORKDIR /app
+COPY ../pom.xml ../pom.xml
+COPY ../common-lib ../common-lib
+COPY pom.xml .
+COPY src src
+RUN cd .. && ./mvnw -pl common-lib install -DskipTests -q \
+    && ./mvnw -pl {service-name} package -DskipTests -q
+
+# Stage 2: Run
+FROM eclipse-temurin:21-jre-alpine
+RUN addgroup -S twende && adduser -S twende -G twende
+WORKDIR /app
+COPY --from=build /app/target/{service-name}-*.jar app.jar
+USER twende
+EXPOSE {port}
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
+  CMD wget -qO- http://localhost:{port}/actuator/health || exit 1
+ENTRYPOINT ["java", "-jar", "app.jar"]
+```
+
+**Rules:**
+- Runs as non-root `twende` user
+- Uses Alpine JRE for minimal image size
+- Health check via actuator endpoint
+- All config via environment variables (no secrets in image)
+- Each service's Implementation Steps must include a Dockerfile step
+
+### OpenAPI / Swagger (All REST Services)
+
+Every REST service (not api-gateway, not common-lib) must configure SpringDoc OpenAPI:
+
+```java
+@Configuration
+public class OpenApiConfig {
+    @Bean
+    public OpenAPI customOpenApi() {
+        return new OpenAPI()
+                .info(new Info()
+                        .title("{Service Name} API")
+                        .version("1.0")
+                        .description("{service purpose}"));
+    }
+}
+```
+
+Swagger UI available at `http://localhost:{port}/swagger-ui.html`.
+
+### Resilience for External API Calls
+
+Services calling external APIs (Google Maps, Selcom, Africa's Talking, FCM, SUMATRA) must:
+- Wrap calls in try-catch with meaningful error logging
+- Use timeouts (5s default via RestClient)
+- For payment-service: use Resilience4j `@CircuitBreaker` on Selcom calls
+- For notification-service: log and continue on SMS/push failures (don't block ride flow)
+- For compliance-service: store failed submissions, retry via scheduler
+
+---
+
+## 19. Multi-Country Strategy
 
 The `country-config-service` is the single source of truth for all country-specific behaviour.
 Every service that needs country-aware logic fetches its config from country-config-service

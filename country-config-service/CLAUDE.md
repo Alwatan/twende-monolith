@@ -524,4 +524,6 @@ Work through these in order. Do not skip ahead.
 - [ ] **9. DTOs + MapStruct mapper** — Create `CountryConfigDto`, `VehicleTypeConfigDto`, `OperatingCityDto`, `PaymentMethodConfigDto`, `UpdateCountryConfigRequest`, `UpdateFeaturesRequest`, `CreateCityRequest`, `CountryConfigUpdatedEvent` (Kafka payload). Create `CountryConfigMapper` with MapStruct
 - [ ] **10. Flyway migrations** — `V1__create_country_config_schema.sql` (all tables) and `V2__seed_tanzania.sql` (Tanzania seed data including country config, 3 vehicle types, 2 cities, 2 payment methods, 4 required documents)
 - [ ] **11. Unit tests + integration tests** — Unit tests for `CountryConfigService` (caching logic, cache eviction, Kafka publishing). Integration tests with Testcontainers (PostgreSQL + Redis) covering all endpoints, seed data verification, cache behavior, and admin authorization
-- [ ] **12. Verify build** — Run `./mvnw -pl country-config-service clean verify` and confirm all tests pass with minimum 80% line coverage
+- [ ] **12. Dockerfile** — Multi-stage build (eclipse-temurin:21-jdk-alpine for build, 21-jre-alpine for run). Non-root `twende` user. Health check on `/actuator/health`. Expose port 8082.
+- [ ] **13. OpenAPI config** — `OpenApiConfig.java` with SpringDoc `OpenAPI` bean. Title: "Country Config Service API". Swagger UI at `/swagger-ui.html`.
+- [ ] **14. Verify build** — Run `./mvnw -pl country-config-service clean verify` and confirm all tests pass with minimum 80% line coverage

@@ -512,4 +512,6 @@ void givenNonAdminUser_whenAdminOverviewRequested_thenForbidden() { ... }
 - [ ] 8. `AdminAnalyticsService`: platform-wide KPIs from `analytics_events` (totalRides, totalDrivers, activeSubscriptions, revenue), per-country metrics using JSONB queries
 - [ ] 9. `DriverAnalyticsController` (GET `/api/v1/analytics/driver/earnings`, GET `/api/v1/analytics/driver/trips`) + `AdminAnalyticsController` (GET `/api/v1/analytics/admin/overview`, GET `/api/v1/analytics/admin/countries/{code}` -- ADMIN role required)
 - [ ] 10. Flyway migration: `V1__create_analytics_schema.sql` (both tables + all indexes)
-- [ ] 11. Unit tests + integration tests (Testcontainers for PostgreSQL and Kafka), verify >= 80% coverage with `./mvnw -pl analytics-service verify`
+- [ ] 11. Dockerfile — Multi-stage build (eclipse-temurin:21-jdk-alpine for build, 21-jre-alpine for run). Non-root `twende` user. Health check on `/actuator/health`. Expose port 8093.
+- [ ] 12. OpenAPI config — `OpenApiConfig.java` with SpringDoc `OpenAPI` bean. Title: "Analytics Service API". Swagger UI at `/swagger-ui.html`.
+- [ ] 13. Unit tests + integration tests (Testcontainers for PostgreSQL and Kafka), verify >= 80% coverage with `./mvnw -pl analytics-service verify`
