@@ -197,6 +197,7 @@
                             <exclude>**/entity/**</exclude>
                             <exclude>**/enums/**</exclude>
                             <exclude>**/config/**</exclude>
+                            <exclude>**/mapper/**</exclude>
                             <exclude>**/*Application.class</exclude>
                         </excludes>
                     </configuration>
