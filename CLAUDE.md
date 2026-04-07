@@ -876,17 +876,29 @@ to build each service, refer to the **"Implementation Steps"** section in that s
 - All `util/` classes, services, controllers
 - State machine transitions, validation logic, edge cases
 
-### Integration tests — use Testcontainers (Spring Boot 4 patterns)
+### Integration tests — Spring Boot 4 + Spring Cloud 2025.1.1 (Oakwood)
 
-**Important Spring Boot 4 / Docker 29 compatibility notes:**
-- `@MockitoBean` is in `org.springframework.test.context.bean.override.mockito` (NOT `org.springframework.test.bean.override.mockito`)
-- Add `src/test/resources/docker-java.properties` with `api.version=1.44` to fix Docker 29 compatibility with Testcontainers 1.x
+**Critical version requirements:**
+- **Spring Boot 4.0.5** with **Spring Cloud 2025.1.1** (Oakwood). Do NOT use Spring Cloud
+  2025.0.x (Northfields) — it targets Boot 3.5.x and causes `ClassNotFoundException` errors.
+- **Spring Cloud Gateway 5.0.x** (ships with Oakwood). The gateway starter is
+  `spring-cloud-starter-gateway-server-webflux` (not `spring-cloud-starter-gateway`).
+  Route config prefix: `spring.cloud.gateway.server.webflux`.
+
+**Spring Boot 4 / Docker 29 compatibility notes:**
+- `@MockitoBean` is in `org.springframework.test.context.bean.override.mockito`
+  (NOT `org.springframework.test.bean.override.mockito`)
+- Add `src/test/resources/docker-java.properties` with `api.version=1.44` to fix
+  Docker 29 compatibility with Testcontainers 1.x
 - Use `WebTestClient` for HTTP assertions (works for both servlet and reactive services)
 - Add `spring-webflux` as a test dependency for servlet services to enable `WebTestClient`
 - Mock `KafkaTemplate` with `@MockitoBean` when Kafka broker isn't needed
-- Use test profile with `spring.jpa.hibernate.ddl-auto: create-drop` and `spring.flyway.enabled: false` for schema setup from entities
-- api-gateway does NOT support `@SpringBootTest` integration tests (Spring Cloud Gateway + Boot 4 WebFlux context conflict) — use unit tests only
+- Use test profile with `spring.jpa.hibernate.ddl-auto: create-drop` and
+  `spring.flyway.enabled: false` for schema setup from entities
+- `TestRestTemplate` moved to `org.springframework.boot.resttestclient` in Boot 4 and
+  requires `spring-boot-resttestclient` dependency — prefer `WebTestClient` instead
 
+### Pattern: Standard service integration test (with database + Redis)
 ```java
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Testcontainers
@@ -925,7 +937,40 @@ class ServiceIntegrationTest {
 }
 ```
 
-### Test profile configuration (`src/test/resources/application-test.yml`)
+### Pattern: API Gateway integration test (no database, mock JWT decoder)
+```java
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+class GatewayIntegrationTest {
+
+    @LocalServerPort
+    private int port;
+
+    private WebTestClient webTestClient;
+
+    @MockitoBean
+    private ReactiveJwtDecoder jwtDecoder;  // mock JWT validation
+
+    @BeforeEach
+    void setUp() {
+        webTestClient = WebTestClient.bindToServer()
+                .baseUrl("http://localhost:" + port).build();
+        when(jwtDecoder.decode(anyString()))
+                .thenReturn(Mono.error(new JwtException("Invalid token")));
+    }
+}
+```
+**Gateway test notes:**
+- Exclude Redis auto-config in test `application.yml` (rate limiter not needed in tests)
+- Use `allow-bean-definition-overriding: true` in test config
+- Routes point to `http://localhost:19999` (no downstream running) — tests verify filter
+  behavior (401/403/404), not routing
+- `@MockitoBean ReactiveJwtDecoder` replaces the real JWKS-based decoder but does NOT
+  propagate into `AuthFilter` for valid-token tests (constructor injection limitation).
+  Test valid JWT flow via unit tests instead.
+
+### Required test resource files
+
+**`src/test/resources/application-test.yml`** (for services with database):
 ```yaml
 spring:
   jpa:
@@ -937,7 +982,7 @@ spring:
     bootstrap-servers: localhost:9092  # Dummy, mocked via @MockitoBean
 ```
 
-### Docker 29 compatibility (`src/test/resources/docker-java.properties`)
+**`src/test/resources/docker-java.properties`** (for all services using Testcontainers):
 ```properties
 api.version=1.44
 ```
