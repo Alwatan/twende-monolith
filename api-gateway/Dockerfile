@@ -19,6 +19,7 @@ RUN for mod in common-lib auth-service country-config-service user-service drive
 
 COPY mvnw .
 RUN chmod +x mvnw \
+    && ./mvnw -N install -DskipTests -q \
     && ./mvnw -pl api-gateway package -DskipTests -q
 
 # Stage 2: Run
