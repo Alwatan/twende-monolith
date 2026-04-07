@@ -13,8 +13,7 @@ public class LocationClient {
 
     private final RestClient restClient;
 
-    public LocationClient(
-            @Value("${twende.services.location-service.url}") String baseUrl) {
+    public LocationClient(@Value("${twende.services.location-service.url}") String baseUrl) {
         this.restClient =
                 RestClient.builder()
                         .baseUrl(baseUrl)
@@ -22,8 +21,7 @@ public class LocationClient {
                         .build();
     }
 
-    public void addDriverToGeoIndex(
-            UUID driverId, String countryCode, VehicleType vehicleType) {
+    public void addDriverToGeoIndex(UUID driverId, String countryCode, VehicleType vehicleType) {
         try {
             restClient
                     .post()
@@ -36,10 +34,7 @@ public class LocationClient {
                     .retrieve()
                     .toBodilessEntity();
         } catch (Exception e) {
-            log.warn(
-                    "Failed to add driver {} to GEO index: {}",
-                    driverId,
-                    e.getMessage());
+            log.warn("Failed to add driver {} to GEO index: {}", driverId, e.getMessage());
         }
     }
 
@@ -48,17 +43,13 @@ public class LocationClient {
             restClient
                     .delete()
                     .uri(
-                            "/internal/locations/drivers/{driverId}/index"
-                                    + "?countryCode={cc}",
+                            "/internal/locations/drivers/{driverId}/index" + "?countryCode={cc}",
                             driverId,
                             countryCode)
                     .retrieve()
                     .toBodilessEntity();
         } catch (Exception e) {
-            log.warn(
-                    "Failed to remove driver {} from GEO index: {}",
-                    driverId,
-                    e.getMessage());
+            log.warn("Failed to remove driver {} from GEO index: {}", driverId, e.getMessage());
         }
     }
 }

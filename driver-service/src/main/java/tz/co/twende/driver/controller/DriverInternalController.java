@@ -19,16 +19,12 @@ public class DriverInternalController {
     private final VehicleService vehicleService;
 
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<DriverProfileDto>> getDriver(
-            @PathVariable UUID id) {
-        return ResponseEntity.ok(
-                ApiResponse.ok(driverService.getProfile(id)));
+    public ResponseEntity<ApiResponse<DriverProfileDto>> getDriver(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(driverService.getProfile(id)));
     }
 
     @GetMapping("/{id}/active-vehicle")
-    public ResponseEntity<ApiResponse<ActiveVehicleDto>> getActiveVehicle(
-            @PathVariable UUID id) {
-        return ResponseEntity.ok(
-                ApiResponse.ok(vehicleService.getActiveVehicle(id)));
+    public ResponseEntity<ApiResponse<ActiveVehicleDto>> getActiveVehicle(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(vehicleService.getActiveVehicle(id)));
     }
 }

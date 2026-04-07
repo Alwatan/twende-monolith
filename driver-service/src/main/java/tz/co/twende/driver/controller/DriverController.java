@@ -29,11 +29,9 @@ public class DriverController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<DriverProfileDto>> getProfile(
-            @RequestHeader("X-User-Id") UUID userId,
-            @RequestHeader("X-User-Role") String role) {
+            @RequestHeader("X-User-Id") UUID userId, @RequestHeader("X-User-Role") String role) {
         validateDriverRole(role);
-        return ResponseEntity.ok(
-                ApiResponse.ok(driverService.getProfile(userId)));
+        return ResponseEntity.ok(ApiResponse.ok(driverService.getProfile(userId)));
     }
 
     @PutMapping
@@ -42,9 +40,7 @@ public class DriverController {
             @RequestHeader("X-User-Role") String role,
             @Valid @RequestBody UpdateDriverRequest request) {
         validateDriverRole(role);
-        return ResponseEntity.ok(
-                ApiResponse.ok(
-                        driverService.updateProfile(userId, request)));
+        return ResponseEntity.ok(ApiResponse.ok(driverService.updateProfile(userId, request)));
     }
 
     @PutMapping("/status")
@@ -54,9 +50,7 @@ public class DriverController {
             @Valid @RequestBody UpdateStatusRequest request) {
         validateDriverRole(role);
         return ResponseEntity.ok(
-                ApiResponse.ok(
-                        driverService.updateStatus(
-                                userId, request.getStatus())));
+                ApiResponse.ok(driverService.updateStatus(userId, request.getStatus())));
     }
 
     @PostMapping("/documents")
@@ -67,22 +61,14 @@ public class DriverController {
             @Valid @RequestBody UploadDocumentRequest request) {
         validateDriverRole(role);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(
-                        ApiResponse.ok(
-                                documentService.uploadDocument(
-                                        userId,
-                                        countryCode,
-                                        request)));
+                .body(ApiResponse.ok(documentService.uploadDocument(userId, countryCode, request)));
     }
 
     @GetMapping("/documents")
-    public ResponseEntity<ApiResponse<List<DriverDocumentDto>>>
-            listDocuments(
-                    @RequestHeader("X-User-Id") UUID userId,
-                    @RequestHeader("X-User-Role") String role) {
+    public ResponseEntity<ApiResponse<List<DriverDocumentDto>>> listDocuments(
+            @RequestHeader("X-User-Id") UUID userId, @RequestHeader("X-User-Role") String role) {
         validateDriverRole(role);
-        return ResponseEntity.ok(
-                ApiResponse.ok(documentService.listDocuments(userId)));
+        return ResponseEntity.ok(ApiResponse.ok(documentService.listDocuments(userId)));
     }
 
     @PostMapping("/vehicles")
@@ -93,36 +79,26 @@ public class DriverController {
             @Valid @RequestBody RegisterVehicleRequest request) {
         validateDriverRole(role);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(
-                        ApiResponse.ok(
-                                vehicleService.registerVehicle(
-                                        userId,
-                                        countryCode,
-                                        request)));
+                .body(ApiResponse.ok(vehicleService.registerVehicle(userId, countryCode, request)));
     }
 
     @GetMapping("/vehicles")
     public ResponseEntity<ApiResponse<List<DriverVehicleDto>>> listVehicles(
-            @RequestHeader("X-User-Id") UUID userId,
-            @RequestHeader("X-User-Role") String role) {
+            @RequestHeader("X-User-Id") UUID userId, @RequestHeader("X-User-Role") String role) {
         validateDriverRole(role);
-        return ResponseEntity.ok(
-                ApiResponse.ok(vehicleService.listVehicles(userId)));
+        return ResponseEntity.ok(ApiResponse.ok(vehicleService.listVehicles(userId)));
     }
 
     @GetMapping("/summary")
     public ResponseEntity<ApiResponse<DriverSummaryDto>> getSummary(
-            @RequestHeader("X-User-Id") UUID userId,
-            @RequestHeader("X-User-Role") String role) {
+            @RequestHeader("X-User-Id") UUID userId, @RequestHeader("X-User-Role") String role) {
         validateDriverRole(role);
-        return ResponseEntity.ok(
-                ApiResponse.ok(driverService.getSummary(userId)));
+        return ResponseEntity.ok(ApiResponse.ok(driverService.getSummary(userId)));
     }
 
     private void validateDriverRole(String role) {
         if (!"DRIVER".equals(role)) {
-            throw new UnauthorizedException(
-                    "Access denied. Driver role required.");
+            throw new UnauthorizedException("Access denied. Driver role required.");
         }
     }
 }

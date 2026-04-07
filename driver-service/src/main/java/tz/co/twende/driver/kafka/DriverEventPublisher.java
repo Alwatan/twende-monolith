@@ -16,8 +16,7 @@ public class DriverEventPublisher {
 
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
-    public void publishStatusUpdated(
-            DriverProfile driver, DriverStatus previousStatus) {
+    public void publishStatusUpdated(DriverProfile driver, DriverStatus previousStatus) {
         DriverStatusUpdatedEvent event = new DriverStatusUpdatedEvent();
         event.setDriverId(driver.getId());
         event.setPreviousStatus(previousStatus);
@@ -26,9 +25,7 @@ public class DriverEventPublisher {
         event.setEventType("DRIVER_STATUS_UPDATED");
 
         kafkaTemplate.send(
-                KafkaConfig.TOPIC_DRIVERS_STATUS_UPDATED,
-                driver.getId().toString(),
-                event);
+                KafkaConfig.TOPIC_DRIVERS_STATUS_UPDATED, driver.getId().toString(), event);
         log.info(
                 "Published driver status update for {}: {} -> {}",
                 driver.getId(),
@@ -44,10 +41,7 @@ public class DriverEventPublisher {
         event.setCountryCode(driver.getCountryCode());
         event.setEventType("DRIVER_APPROVED");
 
-        kafkaTemplate.send(
-                KafkaConfig.TOPIC_DRIVERS_APPROVED,
-                driver.getId().toString(),
-                event);
+        kafkaTemplate.send(KafkaConfig.TOPIC_DRIVERS_APPROVED, driver.getId().toString(), event);
         log.info("Published driver approved event for {}", driver.getId());
     }
 }

@@ -11,9 +11,7 @@ import tz.co.twende.common.enums.DocumentType;
 @AllArgsConstructor
 public class UploadDocumentRequest {
 
-    @NotNull
-    private DocumentType documentType;
+    @NotNull private DocumentType documentType;
 
-    @NotBlank
-    private String fileUrl;
+    @NotBlank private String fileUrl;
 }

@@ -50,14 +50,12 @@ class VehicleServiceTest {
                         .build();
 
         when(driverProfileRepository.existsById(driverId)).thenReturn(true);
-        when(vehicleRepository.existsByDriverIdAndPlateNumber(
-                        driverId, "T123ABC"))
+        when(vehicleRepository.existsByDriverIdAndPlateNumber(driverId, "T123ABC"))
                 .thenReturn(false);
         when(vehicleRepository.save(any())).thenReturn(saved);
         when(driverMapper.toVehicleDto(any())).thenReturn(dto);
 
-        DriverVehicleDto result =
-                vehicleService.registerVehicle(driverId, "TZ", request);
+        DriverVehicleDto result = vehicleService.registerVehicle(driverId, "TZ", request);
         assertThat(result.getVehicleType()).isEqualTo(VehicleType.BAJAJ);
     }
 
@@ -71,14 +69,10 @@ class VehicleServiceTest {
                         .build();
 
         when(driverProfileRepository.existsById(driverId)).thenReturn(true);
-        when(vehicleRepository.existsByDriverIdAndPlateNumber(
-                        driverId, "T123ABC"))
+        when(vehicleRepository.existsByDriverIdAndPlateNumber(driverId, "T123ABC"))
                 .thenReturn(true);
 
-        assertThatThrownBy(
-                        () ->
-                                vehicleService.registerVehicle(
-                                        driverId, "TZ", request))
+        assertThatThrownBy(() -> vehicleService.registerVehicle(driverId, "TZ", request))
                 .isInstanceOf(ConflictException.class);
     }
 
@@ -93,31 +87,22 @@ class VehicleServiceTest {
 
         when(driverProfileRepository.existsById(driverId)).thenReturn(false);
 
-        assertThatThrownBy(
-                        () ->
-                                vehicleService.registerVehicle(
-                                        driverId, "TZ", request))
+        assertThatThrownBy(() -> vehicleService.registerVehicle(driverId, "TZ", request))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
     void givenDriverWithVehicles_whenListVehicles_thenReturnAll() {
         UUID driverId = UUID.randomUUID();
-        List<DriverVehicle> vehicles =
-                List.of(createVehicle(driverId, VehicleType.BAJAJ));
+        List<DriverVehicle> vehicles = List.of(createVehicle(driverId, VehicleType.BAJAJ));
         List<DriverVehicleDto> dtos =
-                List.of(
-                        DriverVehicleDto.builder()
-                                .vehicleType(VehicleType.BAJAJ)
-                                .build());
+                List.of(DriverVehicleDto.builder().vehicleType(VehicleType.BAJAJ).build());
 
         when(driverProfileRepository.existsById(driverId)).thenReturn(true);
-        when(vehicleRepository.findByDriverId(driverId))
-                .thenReturn(vehicles);
+        when(vehicleRepository.findByDriverId(driverId)).thenReturn(vehicles);
         when(driverMapper.toVehicleDtoList(vehicles)).thenReturn(dtos);
 
-        List<DriverVehicleDto> result =
-                vehicleService.listVehicles(driverId);
+        List<DriverVehicleDto> result = vehicleService.listVehicles(driverId);
         assertThat(result).hasSize(1);
     }
 
@@ -135,8 +120,7 @@ class VehicleServiceTest {
                 .thenReturn(Optional.of(vehicle));
         when(driverMapper.toActiveVehicleDto(vehicle)).thenReturn(dto);
 
-        ActiveVehicleDto result =
-                vehicleService.getActiveVehicle(driverId);
+        ActiveVehicleDto result = vehicleService.getActiveVehicle(driverId);
         assertThat(result.getVehicleType()).isEqualTo(VehicleType.BAJAJ);
     }
 
@@ -146,13 +130,11 @@ class VehicleServiceTest {
         when(vehicleRepository.findByDriverIdAndIsActiveTrue(driverId))
                 .thenReturn(Optional.empty());
 
-        assertThatThrownBy(
-                        () -> vehicleService.getActiveVehicle(driverId))
+        assertThatThrownBy(() -> vehicleService.getActiveVehicle(driverId))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
-    private DriverVehicle createVehicle(
-            UUID driverId, VehicleType type) {
+    private DriverVehicle createVehicle(UUID driverId, VehicleType type) {
         DriverVehicle vehicle = new DriverVehicle();
         vehicle.setId(UUID.randomUUID());
         vehicle.setDriverId(driverId);

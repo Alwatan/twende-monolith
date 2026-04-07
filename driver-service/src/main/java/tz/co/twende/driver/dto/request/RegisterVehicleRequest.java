@@ -12,8 +12,7 @@ import tz.co.twende.common.enums.VehicleType;
 @AllArgsConstructor
 public class RegisterVehicleRequest {
 
-    @NotNull
-    private VehicleType vehicleType;
+    @NotNull private VehicleType vehicleType;
 
     @Size(max = 50)
     private String make;

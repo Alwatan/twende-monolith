@@ -897,6 +897,9 @@ to build each service, refer to the **"Implementation Steps"** section in that s
   Route config prefix: `spring.cloud.gateway.server.webflux`.
 
 **Spring Boot 4 / Docker 29 compatibility notes:**
+- `@WebMvcTest` moved to separate module `spring-boot-starter-webmvc-test`. Add as test
+  dependency. Import: `org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest`.
+  For services without this dependency, use plain Mockito unit tests with `@InjectMocks`.
 - `@MockitoBean` is in `org.springframework.test.context.bean.override.mockito`
   (NOT `org.springframework.test.bean.override.mockito`)
 - Add `src/test/resources/docker-java.properties` with `api.version=1.44` to fix

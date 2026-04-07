@@ -30,29 +30,24 @@ public class DriverAdminController {
     private final VehicleService vehicleService;
 
     @GetMapping
-    public ResponseEntity<ApiResponse<PagedResponse<DriverProfileDto>>>
-            listDrivers(
-                    @RequestHeader("X-User-Role") String role,
-                    @RequestParam(required = false) DriverStatus status,
-                    @RequestParam(required = false) String countryCode,
-                    @RequestParam(defaultValue = "0") int page,
-                    @RequestParam(defaultValue = "20") int size) {
+    public ResponseEntity<ApiResponse<PagedResponse<DriverProfileDto>>> listDrivers(
+            @RequestHeader("X-User-Role") String role,
+            @RequestParam(required = false) DriverStatus status,
+            @RequestParam(required = false) String countryCode,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
         validateAdminRole(role);
-        Page<DriverProfileDto> drivers =
-                driverService.listDrivers(status, countryCode, page, size);
-        return ResponseEntity.ok(
-                ApiResponse.ok(PagedResponse.from(drivers)));
+        Page<DriverProfileDto> drivers = driverService.listDrivers(status, countryCode, page, size);
+        return ResponseEntity.ok(ApiResponse.ok(PagedResponse.from(drivers)));
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<DriverDetailDto>> getDriverDetail(
-            @RequestHeader("X-User-Role") String role,
-            @PathVariable UUID id) {
+            @RequestHeader("X-User-Role") String role, @PathVariable UUID id) {
         validateAdminRole(role);
         DriverProfileDto profile = driverService.getProfile(id);
         List<DriverVehicleDto> vehicles = vehicleService.listVehicles(id);
-        List<DriverDocumentDto> documents =
-                documentService.listDocuments(id);
+        List<DriverDocumentDto> documents = documentService.listDocuments(id);
         DriverDetailDto detail =
                 DriverDetailDto.builder()
                         .profile(profile)
@@ -70,9 +65,7 @@ public class DriverAdminController {
             @Valid @RequestBody ApprovalRequest request) {
         validateAdminRole(role);
         return ResponseEntity.ok(
-                ApiResponse.ok(
-                        approvalService.processApproval(
-                                id, adminId, request)));
+                ApiResponse.ok(approvalService.processApproval(id, adminId, request)));
     }
 
     @PutMapping("/{id}/documents/{docId}/verify")
@@ -84,9 +77,7 @@ public class DriverAdminController {
             @Valid @RequestBody DocumentVerifyRequest request) {
         validateAdminRole(role);
         return ResponseEntity.ok(
-                ApiResponse.ok(
-                        documentService.verifyDocument(
-                                docId, adminId, request)));
+                ApiResponse.ok(documentService.verifyDocument(docId, adminId, request)));
     }
 
     @PostMapping("/{id}/suspend")
@@ -95,14 +86,12 @@ public class DriverAdminController {
             @PathVariable UUID id,
             @RequestParam(required = false) String reason) {
         validateAdminRole(role);
-        return ResponseEntity.ok(
-                ApiResponse.ok(approvalService.suspendDriver(id, reason)));
+        return ResponseEntity.ok(ApiResponse.ok(approvalService.suspendDriver(id, reason)));
     }
 
     private void validateAdminRole(String role) {
         if (!"ADMIN".equals(role)) {
-            throw new UnauthorizedException(
-                    "Access denied. Admin role required.");
+            throw new UnauthorizedException("Access denied. Admin role required.");
         }
     }
 }

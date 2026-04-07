@@ -73,21 +73,17 @@ public class DriverService {
             case OFFLINE -> goOffline(driver);
             default ->
                     throw new BadRequestException(
-                            "Cannot set status to "
-                                    + newStatus
-                                    + " via this endpoint");
+                            "Cannot set status to " + newStatus + " via this endpoint");
         };
     }
 
     private DriverProfileDto goOnline(DriverProfile driver) {
         if (driver.getStatus() != DriverStatus.APPROVED
                 && driver.getStatus() != DriverStatus.OFFLINE) {
-            throw new BadRequestException(
-                    "Driver must be approved to go online");
+            throw new BadRequestException("Driver must be approved to go online");
         }
 
-        boolean hasSubscription =
-                subscriptionClient.hasActiveSubscription(driver.getId());
+        boolean hasSubscription = subscriptionClient.hasActiveSubscription(driver.getId());
         if (!hasSubscription) {
             throw new BadRequestException("Purchase a bundle to go online");
         }
@@ -115,8 +111,7 @@ public class DriverService {
         if (driver.getStatus() != DriverStatus.ONLINE_AVAILABLE
                 && driver.getStatus() != DriverStatus.APPROVED
                 && driver.getStatus() != DriverStatus.OFFLINE) {
-            throw new BadRequestException(
-                    "Cannot go offline from status " + driver.getStatus());
+            throw new BadRequestException("Cannot go offline from status " + driver.getStatus());
         }
 
         DriverStatus oldStatus = driver.getStatus();
@@ -124,11 +119,7 @@ public class DriverService {
         driverProfileRepository.save(driver);
 
         logStatusChange(
-                driver.getId(),
-                driver.getCountryCode(),
-                oldStatus,
-                DriverStatus.OFFLINE,
-                null);
+                driver.getId(), driver.getCountryCode(), oldStatus, DriverStatus.OFFLINE, null);
         driverEventPublisher.publishStatusUpdated(driver, oldStatus);
 
         return driverMapper.toProfileDto(driver);
@@ -138,9 +129,7 @@ public class DriverService {
             DriverStatus status, String countryCode, int page, int size) {
         PageRequest pageRequest =
                 PageRequest.of(
-                        page,
-                        Math.min(size, 100),
-                        Sort.by(Sort.Direction.DESC, "createdAt"));
+                        page, Math.min(size, 100), Sort.by(Sort.Direction.DESC, "createdAt"));
 
         Page<DriverProfile> drivers;
         if (status != null && countryCode != null) {
@@ -150,9 +139,7 @@ public class DriverService {
         } else if (status != null) {
             drivers = driverProfileRepository.findByStatus(status, pageRequest);
         } else if (countryCode != null) {
-            drivers =
-                    driverProfileRepository.findByCountryCode(
-                            countryCode, pageRequest);
+            drivers = driverProfileRepository.findByCountryCode(countryCode, pageRequest);
         } else {
             drivers = driverProfileRepository.findAll(pageRequest);
         }
@@ -166,8 +153,7 @@ public class DriverService {
                 .orElseThrow(
                         () ->
                                 new ResourceNotFoundException(
-                                        "Driver not found with id: "
-                                                + driverId));
+                                        "Driver not found with id: " + driverId));
     }
 
     public void logStatusChange(

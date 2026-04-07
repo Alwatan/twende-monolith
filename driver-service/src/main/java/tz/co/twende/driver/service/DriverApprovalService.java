@@ -26,14 +26,12 @@ public class DriverApprovalService {
     private final DriverMapper driverMapper;
 
     @Transactional
-    public DriverProfileDto processApproval(
-            UUID driverId, UUID adminId, ApprovalRequest request) {
+    public DriverProfileDto processApproval(UUID driverId, UUID adminId, ApprovalRequest request) {
         DriverProfile driver = driverService.findById(driverId);
 
         if (driver.getStatus() != DriverStatus.PENDING_APPROVAL) {
             throw new BadRequestException(
-                    "Driver is not in PENDING_APPROVAL status. Current: "
-                            + driver.getStatus());
+                    "Driver is not in PENDING_APPROVAL status. Current: " + driver.getStatus());
         }
 
         if (Boolean.TRUE.equals(request.getApproved())) {
@@ -63,8 +61,7 @@ public class DriverApprovalService {
         return driverMapper.toProfileDto(driver);
     }
 
-    private DriverProfileDto rejectDriver(
-            DriverProfile driver, String rejectionReason) {
+    private DriverProfileDto rejectDriver(DriverProfile driver, String rejectionReason) {
         DriverStatus oldStatus = driver.getStatus();
         driver.setStatus(DriverStatus.REJECTED);
         driver.setRejectionReason(rejectionReason);
@@ -90,11 +87,7 @@ public class DriverApprovalService {
         driverProfileRepository.save(driver);
 
         driverService.logStatusChange(
-                driver.getId(),
-                driver.getCountryCode(),
-                oldStatus,
-                DriverStatus.SUSPENDED,
-                reason);
+                driver.getId(), driver.getCountryCode(), oldStatus, DriverStatus.SUSPENDED, reason);
         driverEventPublisher.publishStatusUpdated(driver, oldStatus);
 
         log.info("Driver {} suspended: {}", driver.getId(), reason);

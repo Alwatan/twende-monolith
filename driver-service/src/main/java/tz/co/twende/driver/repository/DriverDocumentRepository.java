@@ -13,7 +13,8 @@ public interface DriverDocumentRepository extends JpaRepository<DriverDocument, 
 
     List<DriverDocument> findByDriverId(UUID driverId);
 
-    Optional<DriverDocument> findByDriverIdAndDocumentType(UUID driverId, DocumentType documentType);
+    Optional<DriverDocument> findByDriverIdAndDocumentType(
+            UUID driverId, DocumentType documentType);
 
     boolean existsByDriverIdAndDocumentType(UUID driverId, DocumentType documentType);
 }

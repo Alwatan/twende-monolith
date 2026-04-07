@@ -10,6 +10,5 @@ import tz.co.twende.common.enums.DriverStatus;
 @AllArgsConstructor
 public class UpdateStatusRequest {
 
-    @NotNull
-    private DriverStatus status;
+    @NotNull private DriverStatus status;
 }

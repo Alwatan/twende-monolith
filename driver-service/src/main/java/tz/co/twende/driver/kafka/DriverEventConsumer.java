@@ -27,22 +27,16 @@ public class DriverEventConsumer {
     private final DriverService driverService;
     private final DriverEventPublisher driverEventPublisher;
 
-    @KafkaListener(
-            topics = "twende.users.registered",
-            groupId = "driver-service-group")
+    @KafkaListener(topics = "twende.users.registered", groupId = "driver-service-group")
     @Transactional
     public void onUserRegistered(UserRegisteredEvent event) {
         if (event.getRole() != UserRole.DRIVER) {
-            log.debug(
-                    "Ignoring non-DRIVER registration for user {}",
-                    event.getUserId());
+            log.debug("Ignoring non-DRIVER registration for user {}", event.getUserId());
             return;
         }
 
         if (driverProfileRepository.existsById(event.getUserId())) {
-            log.debug(
-                    "Driver profile already exists for {}, skipping",
-                    event.getUserId());
+            log.debug("Driver profile already exists for {}, skipping", event.getUserId());
             return;
         }
 
@@ -56,9 +50,7 @@ public class DriverEventConsumer {
         log.info("Created driver profile for {}", event.getUserId());
     }
 
-    @KafkaListener(
-            topics = "twende.rides.completed",
-            groupId = "driver-service-group")
+    @KafkaListener(topics = "twende.rides.completed", groupId = "driver-service-group")
     @Transactional
     public void onRideCompleted(RideCompletedEvent event) {
         driverProfileRepository
@@ -78,9 +70,7 @@ public class DriverEventConsumer {
                         });
     }
 
-    @KafkaListener(
-            topics = "twende.subscriptions.activated",
-            groupId = "driver-service-group")
+    @KafkaListener(topics = "twende.subscriptions.activated", groupId = "driver-service-group")
     public void onSubscriptionActivated(SubscriptionActivatedEvent event) {
         log.info(
                 "Subscription activated for driver {}, plan: {}",
@@ -88,9 +78,7 @@ public class DriverEventConsumer {
                 event.getPlan());
     }
 
-    @KafkaListener(
-            topics = "twende.subscriptions.expired",
-            groupId = "driver-service-group")
+    @KafkaListener(topics = "twende.subscriptions.expired", groupId = "driver-service-group")
     @Transactional
     public void onSubscriptionExpired(SubscriptionExpiredEvent event) {
         driverProfileRepository
@@ -107,11 +95,9 @@ public class DriverEventConsumer {
                                         oldStatus,
                                         DriverStatus.OFFLINE,
                                         "Subscription expired");
-                                driverEventPublisher.publishStatusUpdated(
-                                        driver, oldStatus);
+                                driverEventPublisher.publishStatusUpdated(driver, oldStatus);
                                 log.info(
-                                        "Forced driver {} offline due to"
-                                                + " subscription expiry",
+                                        "Forced driver {} offline due to" + " subscription expiry",
                                         driver.getId());
                             }
                         });

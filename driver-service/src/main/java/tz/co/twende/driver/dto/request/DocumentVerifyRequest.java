@@ -9,8 +9,7 @@ import lombok.*;
 @AllArgsConstructor
 public class DocumentVerifyRequest {
 
-    @NotNull
-    private Boolean verified;
+    @NotNull private Boolean verified;
 
     private String rejectionReason;
 }

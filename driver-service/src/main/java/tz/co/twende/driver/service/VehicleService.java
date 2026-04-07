@@ -30,12 +30,10 @@ public class VehicleService {
     public DriverVehicleDto registerVehicle(
             UUID driverId, String countryCode, RegisterVehicleRequest request) {
         if (!driverProfileRepository.existsById(driverId)) {
-            throw new ResourceNotFoundException(
-                    "Driver not found with id: " + driverId);
+            throw new ResourceNotFoundException("Driver not found with id: " + driverId);
         }
 
-        if (vehicleRepository.existsByDriverIdAndPlateNumber(
-                driverId, request.getPlateNumber())) {
+        if (vehicleRepository.existsByDriverIdAndPlateNumber(driverId, request.getPlateNumber())) {
             throw new ConflictException(
                     "Vehicle with plate number "
                             + request.getPlateNumber()
@@ -54,20 +52,15 @@ public class VehicleService {
         vehicle.setActive(true);
 
         DriverVehicle saved = vehicleRepository.save(vehicle);
-        log.info(
-                "Registered vehicle {} for driver {}",
-                saved.getPlateNumber(),
-                driverId);
+        log.info("Registered vehicle {} for driver {}", saved.getPlateNumber(), driverId);
         return driverMapper.toVehicleDto(saved);
     }
 
     public List<DriverVehicleDto> listVehicles(UUID driverId) {
         if (!driverProfileRepository.existsById(driverId)) {
-            throw new ResourceNotFoundException(
-                    "Driver not found with id: " + driverId);
+            throw new ResourceNotFoundException("Driver not found with id: " + driverId);
         }
-        return driverMapper.toVehicleDtoList(
-                vehicleRepository.findByDriverId(driverId));
+        return driverMapper.toVehicleDtoList(vehicleRepository.findByDriverId(driverId));
     }
 
     public ActiveVehicleDto getActiveVehicle(UUID driverId) {
@@ -84,20 +77,17 @@ public class VehicleService {
     }
 
     @Transactional
-    public DriverVehicleDto setActiveVehicle(
-            UUID driverId, UUID vehicleId) {
+    public DriverVehicleDto setActiveVehicle(UUID driverId, UUID vehicleId) {
         DriverVehicle vehicle =
                 vehicleRepository
                         .findById(vehicleId)
                         .orElseThrow(
                                 () ->
                                         new ResourceNotFoundException(
-                                                "Vehicle not found: "
-                                                        + vehicleId));
+                                                "Vehicle not found: " + vehicleId));
 
         if (!vehicle.getDriverId().equals(driverId)) {
-            throw new BadRequestException(
-                    "Vehicle does not belong to this driver");
+            throw new BadRequestException("Vehicle does not belong to this driver");
         }
 
         // Deactivate all other vehicles

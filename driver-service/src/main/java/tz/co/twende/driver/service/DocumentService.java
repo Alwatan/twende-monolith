@@ -31,8 +31,7 @@ public class DocumentService {
     public DriverDocumentDto uploadDocument(
             UUID driverId, String countryCode, UploadDocumentRequest request) {
         if (!driverProfileRepository.existsById(driverId)) {
-            throw new ResourceNotFoundException(
-                    "Driver not found with id: " + driverId);
+            throw new ResourceNotFoundException("Driver not found with id: " + driverId);
         }
 
         if (documentRepository.existsByDriverIdAndDocumentType(
@@ -51,20 +50,15 @@ public class DocumentService {
         document.setStatus("PENDING");
 
         DriverDocument saved = documentRepository.save(document);
-        log.info(
-                "Uploaded document {} for driver {}",
-                request.getDocumentType(),
-                driverId);
+        log.info("Uploaded document {} for driver {}", request.getDocumentType(), driverId);
         return driverMapper.toDocumentDto(saved);
     }
 
     public List<DriverDocumentDto> listDocuments(UUID driverId) {
         if (!driverProfileRepository.existsById(driverId)) {
-            throw new ResourceNotFoundException(
-                    "Driver not found with id: " + driverId);
+            throw new ResourceNotFoundException("Driver not found with id: " + driverId);
         }
-        return driverMapper.toDocumentDtoList(
-                documentRepository.findByDriverId(driverId));
+        return driverMapper.toDocumentDtoList(documentRepository.findByDriverId(driverId));
     }
 
     @Transactional
@@ -76,12 +70,10 @@ public class DocumentService {
                         .orElseThrow(
                                 () ->
                                         new ResourceNotFoundException(
-                                                "Document not found: "
-                                                        + documentId));
+                                                "Document not found: " + documentId));
 
         if (!"PENDING".equals(document.getStatus())) {
-            throw new BadRequestException(
-                    "Document is already " + document.getStatus());
+            throw new BadRequestException("Document is already " + document.getStatus());
         }
 
         if (Boolean.TRUE.equals(request.getVerified())) {
@@ -95,11 +87,7 @@ public class DocumentService {
         }
 
         DriverDocument saved = documentRepository.save(document);
-        log.info(
-                "Document {} {} by admin {}",
-                documentId,
-                saved.getStatus(),
-                adminId);
+        log.info("Document {} {} by admin {}", documentId, saved.getStatus(), adminId);
         return driverMapper.toDocumentDto(saved);
     }
 }

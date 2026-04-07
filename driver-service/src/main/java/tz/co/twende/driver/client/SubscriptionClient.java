@@ -36,10 +36,7 @@ public class SubscriptionClient {
                     .toBodilessEntity();
             return true;
         } catch (Exception e) {
-            log.debug(
-                    "No active subscription found for driver {}: {}",
-                    driverId,
-                    e.getMessage());
+            log.debug("No active subscription found for driver {}: {}", driverId, e.getMessage());
             return false;
         }
     }

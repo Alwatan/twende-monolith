@@ -9,8 +9,7 @@ import lombok.*;
 @AllArgsConstructor
 public class ApprovalRequest {
 
-    @NotNull
-    private Boolean approved;
+    @NotNull private Boolean approved;
 
     private String rejectionReason;
 }
