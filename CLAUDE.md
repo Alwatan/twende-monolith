@@ -1,7 +1,9 @@
 # CLAUDE.md — Twende Platform
 
 > This file is the single source of truth for Claude Code when building Twende.
-> Read it fully before writing any code. Re-read relevant sections before each task.
+> Read it fully before writing any code. Each service also has its own `CLAUDE.md`
+> with service-specific implementation details — read both this file and the
+> relevant service file before working on any module.
 
 ---
 
@@ -24,22 +26,97 @@ per-trip commission. This is fundamentally different from Uber and Bolt.
 
 ---
 
-## 2. Architecture: Modular Monolith
+## 2. Architecture: Microservices Monorepo
 
-Single Spring Boot application. All domains in one codebase. Modules communicate via direct
-Java service calls and Spring `ApplicationEventPublisher` (no Kafka for internal events).
+**16 independent Spring Boot microservices** + 1 shared library, all in one Maven monorepo.
+Each service owns its own PostgreSQL database (database-per-service pattern). No service
+reads another service's database directly.
 
-**Why monolith first:**
-- Faster to build and iterate
-- Simpler deployment (single JAR)
-- Easier debugging (one process, one log stream)
-- Can be decomposed to microservices later by extracting modules along existing boundaries
+**Communication patterns:**
+```
+Synchronous  → REST over HTTP (Spring RestClient, direct URLs via env vars)
+Asynchronous → Apache Kafka (ride lifecycle, payments, notifications)
+Real-time    → WebSocket (live driver location, ride status updates)
+Caching      → Redis (location data, country config, session tokens, rate limiting)
+```
 
-**Modular boundaries are still enforced:**
-- No module imports another module's `repository` or `entity` directly
-- Cross-module data access goes through the other module's `Service` interface
-- Each module has its own Flyway migration file
-- Module packages are clearly separated under `com.twende.modules`
+**Why microservices:**
+- Independent scaling (matching-engine and location-service need different resources)
+- Independent deployment (auth changes don't require ride-service redeployment)
+- Team ownership (each service has clear domain boundaries)
+- Technology flexibility (api-gateway uses WebFlux, all others use WebMvc)
+
+**What we do NOT use (do not add these):**
+- **No Eureka** — services use direct URLs via environment variables
+- **No Config Server** — each service has its own `application.yml` with env var substitution
+- **No OpenFeign** — use Spring `RestClient` for all sync inter-service calls
+- **No Google Maps SDK** — call Google Maps REST APIs via `RestClient` directly
+- **No Africa's Talking SDK** — call AT REST API via `RestClient` directly
+
+### Service Inventory
+
+| Service | Port | Database | Purpose |
+|---|---|---|---|
+| `api-gateway` | 8080 | — | Entry point, JWT validation, rate limiting, routing |
+| `auth-service` | 8081 | `twende_auth` | OAuth2 Authorization Server, JWT issuance, OTP |
+| `country-config-service` | 8082 | `twende_config` | Per-country config, vehicle types, feature flags |
+| `user-service` | 8083 | `twende_users` | Rider profiles, preferences, saved places |
+| `driver-service` | 8084 | `twende_drivers` | Driver profiles, documents, vehicle management |
+| `ride-service` | 8085 | `twende_rides` | Ride lifecycle orchestration |
+| `matching-service` | 8086 | `twende_matching` | Broadcast-and-accept driver matching |
+| `location-service` | 8087 | `twende_locations` | WebSocket location tracking, geo queries, zones |
+| `pricing-service` | 8088 | `twende_pricing` | Fare estimation and calculation, surge |
+| `payment-service` | 8089 | `twende_payments` | Wallets, Selcom, cash reconciliation |
+| `subscription-service` | 8090 | `twende_subscriptions` | Driver bundle management and billing |
+| `notification-service` | 8091 | `twende_notifications` | Push (FCM), SMS (Africa's Talking), in-app, email |
+| `rating-service` | 8092 | `twende_ratings` | Rider and driver ratings |
+| `analytics-service` | 8093 | `twende_analytics` | Earnings dashboards, business metrics |
+| `compliance-service` | 8094 | `twende_compliance` | SUMATRA reporting, audit logs |
+| `loyalty-service` | 8095 | `twende_loyalty` | Rider loyalty programme, free rides |
+
+**Shared library (not a service):**
+- `common-lib` — Base entities, enums, Kafka event schemas, exceptions, utilities
+
+### Request Flow: Rider Books a Ride
+
+```
+Rider App
+  │
+  ▼
+API Gateway (8080)
+  │  validates JWT, injects X-User-Id / X-User-Role / X-Country-Code headers
+  ▼
+Ride Service (8085)  ──── REST ────▶  Pricing Service (8088)
+  │  creates ride record              returns fare estimate
+  │
+  │  publishes Kafka: twende.rides.requested
+  ▼
+Matching Service (8086)
+  │  queries Redis GEO for nearby drivers
+  │  broadcasts offer to ~10 drivers via push notification
+  │  first driver to ACCEPT wins (Redis SETNX atomic lock)
+  │  publishes Kafka: twende.rides.offer-accepted
+  ▼
+Ride Service (8085)
+  │  updates ride status → DRIVER_ASSIGNED
+  │  publishes Kafka: twende.rides.status-updated
+  ▼
+Notification Service (8091)
+     sends push to rider + driver
+```
+
+### Request Flow: Ride Completion
+
+```
+Ride Service (8085)
+  │  publishes Kafka: twende.rides.completed
+  │
+  ├──▶ Payment Service (8089)     credits driver wallet (free ride: Twende pays)
+  ├──▶ Rating Service (8092)      triggers rating prompt
+  ├──▶ Analytics Service (8093)   records trip event
+  ├──▶ Loyalty Service (8095)     updates rider progress, checks free ride threshold
+  └──▶ Compliance Service (8094)  logs trip for SUMATRA
+```
 
 ---
 
@@ -49,250 +126,118 @@ Java service calls and Spring `ApplicationEventPublisher` (no Kafka for internal
 |---|---|---|
 | Java | 21 (LTS) | Language |
 | Spring Boot | 4.0.5 | Framework |
+| Spring Cloud | 2025.0.0 | Gateway, circuit breaker |
+| Spring Cloud Gateway | (included) | API Gateway (WebFlux-based) |
 | Spring Security | (included with Boot 4) | Auth + method security |
-| Spring Authorization Server | latest compatible | OAuth2 JWT issuance |
+| Spring Authorization Server | latest compatible | OAuth2 JWT issuance (auth-service only) |
 | Spring Data JPA + Hibernate | (included) | ORM |
 | Spring Data Redis | (included) | Caching, GEO, rate limiting |
+| Spring Kafka | (included) | Async inter-service events |
 | Spring WebSocket | (included) | Real-time location |
-| PostgreSQL | 16 | Primary database |
-| Flyway | (included with Boot) | Schema migrations |
-| Redis | 7 | Cache, GEO, sessions |
+| PostgreSQL | 16 | Primary database (one per service) |
+| PostGIS | (PostgreSQL extension) | Spatial queries in location-service |
+| Flyway | (included with Boot) | Schema migrations (per-service) |
+| Redis | 7 | Cache, GEO, sessions, rate limiting |
+| Apache Kafka | 3.8 (KRaft mode) | Async event bus |
+| Resilience4j | 2.2.0 | Circuit breaking (api-gateway) |
 | Lombok | 1.18.34 | Boilerplate reduction |
-| MapStruct | 1.6.0 | Entity ↔ DTO mapping |
+| MapStruct | 1.6.0 | Entity <> DTO mapping |
 | SpringDoc OpenAPI | 2.6.0 | API documentation |
 | Micrometer + Prometheus | (included) | Metrics |
 | Micrometer Tracing + Zipkin | (included) | Distributed tracing |
 | Testcontainers | 1.20.0 | Integration tests |
-| Africa's Talking REST API | (via Spring RestClient) | SMS — no SDK, direct HTTP calls |
+| ULID Creator | 5.2.3 | Time-sortable unique IDs |
 | Firebase Admin SDK | 9.4.2 | Push notifications (FCM) |
 | MinIO SDK | 8.6.0 | File storage (driver docs) |
-| Google Maps REST API | (via Spring RestClient) | Geocoding, routing, ETA, autocomplete — no SDK |
-| PostGIS | (PostgreSQL extension) | Spatial queries, zone polygon boundaries |
-| ULID Creator | 5.2.3 | Time-sortable unique IDs |
 | SendGrid | 4.10.2 | Email |
 
-**No Spring Cloud.** No Eureka. No Config Server. No Spring Cloud Gateway.
-These are microservices concerns. Not needed here.
-
-**No third-party mapping SDKs.** Google Maps, OSRM, and Nominatim are called via Spring
-`RestClient` directly — same pattern as Africa's Talking. The `google-maps-services` SDK
-must not be in `pom.xml`.
+**External APIs called via Spring `RestClient` (no SDK):**
+- Google Maps REST API — geocoding, routing, ETA, autocomplete
+- Africa's Talking REST API — SMS
+- Selcom REST API — mobile money (Tanzania)
+- OSRM — routing (Phase 2, self-hosted)
+- Nominatim — geocoding (Phase 3, self-hosted)
 
 ---
 
-## 4. Package Structure
+## 4. Monorepo Structure
 
 ```
-com.twende
-├── TwendeApplication.java
-├── config/
-│   ├── SecurityConfig.java           # Spring Security + OAuth2 config
-│   ├── WebSocketConfig.java          # WebSocket endpoint registration
-│   ├── RedisConfig.java              # Redis template beans
-│   ├── JpaConfig.java                # @EnableJpaAuditing
-│   ├── AsyncConfig.java              # @EnableAsync thread pool
-│   └── OpenApiConfig.java            # SpringDoc config
-├── common/
-│   ├── entity/
-│   │   ├── BaseEntity.java           # ULID PK (stored as UUID), createdAt, updatedAt, countryCode
-│   │   └── UlidGenerator.java        # Custom Hibernate IdentifierGenerator for ULIDs
-│   ├── response/
-│   │   ├── ApiResponse.java          # Standard response wrapper
-│   │   └── PagedResponse.java        # Paginated wrapper
-│   ├── exception/
-│   │   ├── TwendeException.java      # Base exception
-│   │   ├── ResourceNotFoundException.java
-│   │   ├── UnauthorizedException.java
-│   │   ├── ConflictException.java
-│   │   ├── BadRequestException.java
-│   │   └── GlobalExceptionHandler.java  # @RestControllerAdvice
-│   ├── enums/
-│   │   ├── RideStatus.java
-│   │   ├── DriverStatus.java
-│   │   ├── VehicleType.java
-│   │   ├── PaymentStatus.java
-│   │   ├── SubscriptionPlan.java
-│   │   ├── SubscriptionStatus.java
-│   │   ├── NotificationType.java
-│   │   ├── DocumentType.java
-│   │   ├── CountryCode.java
-│   │   ├── UserRole.java
-│   │   └── OfferStatus.java
-│   ├── event/
-│   │   ├── TwendeEvent.java          # Base Spring ApplicationEvent
-│   │   ├── RideRequestedEvent.java
-│   │   ├── RideCompletedEvent.java
-│   │   ├── DriverMatchedEvent.java
-│   │   ├── DriverRejectedRideEvent.java
-│   │   ├── RideFareBoostedEvent.java
-│   │   ├── TripStartOtpGeneratedEvent.java
-│   │   ├── PaymentCompletedEvent.java
-│   │   ├── SubscriptionActivatedEvent.java
-│   │   ├── SubscriptionExpiredEvent.java
-│   │   ├── FreeRideOfferEarnedEvent.java
-│   │   └── FreeRideCompletedEvent.java
-│   └── util/
-│       ├── PhoneUtil.java            # E.164 normalisation
-│       ├── CurrencyUtil.java         # Format amounts per country
-│       └── OtpUtil.java              # 4-digit OTP generation (SecureRandom)
-└── modules/
-    ├── auth/
-    │   ├── entity/AuthUser.java
-    │   ├── entity/OtpCode.java
-    │   ├── repository/AuthUserRepository.java
-    │   ├── repository/OtpCodeRepository.java
-    │   ├── service/AuthService.java
-    │   ├── service/OtpService.java
-    │   ├── controller/AuthController.java
-    │   ├── dto/...
-    │   └── config/AuthorizationServerConfig.java
-    ├── countryconfig/
-    │   ├── entity/CountryConfig.java
-    │   ├── entity/VehicleTypeConfig.java
-    │   ├── entity/OperatingCity.java
-    │   ├── entity/PaymentMethodConfig.java
-    │   ├── repository/...
-    │   ├── service/CountryConfigService.java
-    │   └── controller/CountryConfigController.java
-    ├── user/
-    │   ├── entity/UserProfile.java
-    │   ├── entity/SavedPlace.java
-    │   ├── repository/...
-    │   ├── service/UserService.java
-    │   └── controller/UserController.java
-    ├── driver/
-    │   ├── entity/DriverProfile.java
-    │   ├── entity/DriverVehicle.java
-    │   ├── entity/DriverDocument.java
-    │   ├── repository/...
-    │   ├── service/DriverService.java
-    │   ├── service/DocumentService.java
-    │   └── controller/DriverController.java
-    ├── location/
-    │   ├── entity/Zone.java
-    │   ├── entity/GeocodeCache.java
-    │   ├── repository/ZoneRepository.java
-    │   ├── repository/GeocodeCacheRepository.java
-    │   ├── service/LocationService.java
-    │   ├── service/GeocodingService.java
-    │   ├── service/RoutingService.java
-    │   ├── service/AutocompleteService.java
-    │   ├── service/GeofenceService.java
-    │   ├── service/ZoneService.java
-    │   ├── provider/GeocodingProvider.java         # Interface
-    │   ├── provider/RoutingProvider.java            # Interface
-    │   ├── provider/AutocompleteProvider.java       # Interface
-    │   ├── provider/ProviderFactory.java            # Resolves provider per city config
-    │   ├── provider/google/GoogleGeocodingProvider.java
-    │   ├── provider/google/GoogleRoutingProvider.java
-    │   ├── provider/google/GoogleAutocompleteProvider.java
-    │   ├── provider/google/GoogleMapsClient.java    # RestClient for Google Maps REST APIs
-    │   ├── provider/osrm/OsrmRoutingProvider.java   # Stub — Phase 2
-    │   ├── provider/osrm/OsrmClient.java            # Stub — Phase 2
-    │   ├── provider/nominatim/NominatimGeocodingProvider.java  # Stub — Phase 3
-    │   ├── provider/nominatim/NominatimClient.java  # Stub — Phase 3
-    │   ├── controller/GeocodingController.java
-    │   ├── controller/RoutingController.java
-    │   ├── controller/ZoneController.java
-    │   ├── config/GoogleMapsProperties.java         # @ConfigurationProperties
-    │   ├── config/OsrmProperties.java
-    │   ├── config/NominatimProperties.java
-    │   ├── websocket/LocationWebSocketHandler.java
-    │   ├── websocket/WebSocketSessionRegistry.java
-    │   └── dto/...
-    ├── pricing/
-    │   ├── service/PricingService.java
-    │   ├── service/SurgeService.java
-    │   └── controller/PricingController.java
-    ├── matching/
-    │   ├── service/MatchingService.java
-    │   ├── service/DriverOfferService.java
-    │   └── event/...
-    ├── ride/
-    │   ├── entity/Ride.java
-    │   ├── entity/RideStatusEvent.java
-    │   ├── entity/RideDriverRejection.java
-    │   ├── repository/...
-    │   ├── service/RideService.java
-    │   ├── service/FareBoostService.java
-    │   ├── service/TripOtpService.java
-    │   └── controller/RideController.java
-    ├── payment/
-    │   ├── entity/Transaction.java
-    │   ├── entity/DriverWallet.java
-    │   ├── entity/WalletEntry.java
-    │   ├── repository/...
-    │   ├── service/PaymentService.java
-    │   ├── service/WalletService.java
-    │   ├── provider/PaymentProvider.java
-    │   ├── provider/SelcomProvider.java
-    │   └── controller/PaymentController.java
-    ├── subscription/
-    │   ├── entity/Subscription.java
-    │   ├── entity/SubscriptionPlan.java
-    │   ├── repository/...
-    │   ├── service/SubscriptionService.java
-    │   └── controller/SubscriptionController.java
-    ├── notification/
-    │   ├── entity/NotificationLog.java
-    │   ├── entity/FcmToken.java
-    │   ├── entity/NotificationTemplate.java
-    │   ├── repository/...
-    │   ├── service/NotificationService.java
-    │   ├── service/TemplateResolver.java
-    │   ├── provider/SmsProvider.java              # Interface
-    │   ├── provider/PushProvider.java             # Interface
-    │   ├── provider/sms/AfricasTalkingSmsProvider.java   # RestClient, no SDK
-    │   ├── provider/sms/TwilioSmsProvider.java           # Stub — for Kenya etc.
-    │   ├── provider/push/FcmPushProvider.java            # Firebase Admin SDK
-    │   ├── provider/push/OneSignalPushProvider.java       # Stub — alternative
-    │   └── controller/NotificationController.java
-    ├── rating/
-    │   ├── entity/Rating.java
-    │   ├── repository/...
-    │   ├── service/RatingService.java
-    │   └── controller/RatingController.java
-    ├── analytics/
-    │   ├── entity/AnalyticsEvent.java
-    │   ├── repository/...
-    │   ├── service/AnalyticsService.java
-    │   └── controller/AnalyticsController.java
-    ├── loyalty/
-    │   ├── entity/LoyaltyRule.java
-    │   ├── entity/RiderProgress.java
-    │   ├── entity/FreeRideOffer.java
-    │   ├── repository/...
-    │   ├── service/LoyaltyService.java
-    │   └── controller/LoyaltyController.java
-    └── compliance/
-        ├── entity/TripReport.java
-        ├── repository/...
-        ├── service/ComplianceService.java
-        ├── adapter/ComplianceAdapter.java
-        └── adapter/SumatraAdapter.java
+twende-platform/
+├── pom.xml                          # Parent POM (dependency management, plugins)
+├── CLAUDE.md                        # This file (architecture overview)
+├── docker-compose.yml               # Local dev: Postgres, Redis, Kafka, Zipkin, MinIO
+├── Makefile                         # Common build targets
+├── .env.example                     # Environment variable template
+├── .github/workflows/ci.yml         # CI/CD pipeline
+├── infra/postgres/init-databases.sh # Creates per-service databases
+├── common-lib/                      # Shared library (JAR, not executable)
+│   └── CLAUDE.md
+├── api-gateway/                     # Spring Cloud Gateway
+│   └── CLAUDE.md
+├── auth-service/                    # OAuth2 + OTP authentication
+│   └── CLAUDE.md
+├── country-config-service/          # Multi-country master config
+│   └── CLAUDE.md
+├── user-service/                    # Rider profiles
+│   └── CLAUDE.md
+├── driver-service/                  # Driver profiles, documents, vehicles
+│   └── CLAUDE.md
+├── location-service/                # WebSocket, Redis GEO, zones, geocoding
+│   └── CLAUDE.md
+├── pricing-service/                 # Fare calculation, surge
+│   └── CLAUDE.md
+├── matching-service/                # Broadcast-and-accept matching
+│   └── CLAUDE.md
+├── ride-service/                    # Ride lifecycle orchestration
+│   └── CLAUDE.md
+├── payment-service/                 # Wallets, Selcom, payouts
+│   └── CLAUDE.md
+├── subscription-service/            # Driver bundles
+│   └── CLAUDE.md
+├── notification-service/            # Push, SMS, email, templates
+│   └── CLAUDE.md
+├── loyalty-service/                 # Rider loyalty, free rides
+│   └── CLAUDE.md
+├── rating-service/                  # Rider/driver ratings
+│   └── CLAUDE.md
+├── analytics-service/               # Event ingestion, dashboards
+│   └── CLAUDE.md
+└── compliance-service/              # SUMATRA reporting
+    └── CLAUDE.md
+```
+
+### Build Commands
+
+```bash
+# Build entire monorepo
+./mvnw clean install
+
+# Build a single service
+./mvnw -pl auth-service -am clean package
+
+# Run tests for one service
+./mvnw -pl ride-service test
+
+# Format code (Google Java Format, AOSP style)
+./mvnw spotless:apply    # or: make format
+
+# Start local infrastructure
+make up    # starts Postgres, Redis, Kafka, Zipkin, MinIO
 ```
 
 ---
 
-## 5. Global Conventions
+## 5. common-lib Contents
 
-**These apply to every file in the project. Never deviate.**
+`common-lib` is a shared Java library (plain JAR, not executable) imported by all services.
+It provides consistency across the platform. See `common-lib/CLAUDE.md` for full details.
 
-### Entities
-```java
-@Entity
-@Table(name = "rides")
-@Getter @Setter @NoArgsConstructor
-public class Ride extends BaseEntity {
-    // All entities extend BaseEntity
-    // BaseEntity provides: UUID id (ULID-generated), Instant createdAt, Instant updatedAt, String countryCode
-}
-```
+### Base Entity (ULID-based primary keys)
 
-### BaseEntity (ULID-based primary keys)
 ULIDs are time-sortable, globally unique, and stored as standard UUID columns in PostgreSQL.
-The Java type remains `UUID` — ULIDs are binary-compatible. The custom `UlidGenerator`
-produces monotonically increasing IDs for better B-tree index performance.
+The custom `UlidGenerator` produces monotonically increasing IDs for better B-tree index
+performance.
 
 ```java
 @MappedSuperclass
@@ -316,19 +261,71 @@ public abstract class BaseEntity {
 }
 ```
 
-### UlidGenerator
+### Standard Response Wrappers
+
 ```java
-public class UlidGenerator implements IdentifierGenerator {
-    @Override
-    public Object generate(SharedSessionContractImplementor session, Object object) {
-        return UlidCreator.getMonotonicUlid().toUuid();
-    }
+// Every controller method returns ApiResponse<T>
+public static <T> ApiResponse<T> ok(T data) { ... }
+public static <T> ApiResponse<T> error(String message) { ... }
+```
+
+### Enums
+
+`RideStatus`, `DriverStatus`, `VehicleType`, `PaymentStatus`, `PaymentMethod`,
+`SubscriptionPlan`, `SubscriptionStatus`, `NotificationType`, `DocumentType`,
+`CountryCode`, `UserRole`, `DriverOfferAction`, `OfferStatus`
+
+### Kafka Events (base class + all event POJOs)
+
+```java
+public abstract class KafkaEvent {
+    private String eventId = UUID.randomUUID().toString();
+    private String eventType;
+    private String countryCode;
+    private Instant timestamp = Instant.now();
+    private String correlationId;  // trace ID for distributed tracing
+}
+```
+
+Events: `RideRequestedEvent`, `RideStatusUpdatedEvent`, `RideCompletedEvent`,
+`RideFareBoostedEvent`, `DriverMatchedEvent`, `DriverStatusUpdatedEvent`,
+`DriverRejectedRideEvent`, `DriverOfferNotificationEvent`, `RideOfferAcceptedEvent`,
+`PaymentInitiatedEvent`, `PaymentCompletedEvent`, `SubscriptionActivatedEvent`,
+`SubscriptionExpiredEvent`, `UserRegisteredEvent`, `SendNotificationEvent`,
+`FreeRideOfferEarnedEvent`, `FreeRideCompletedEvent`
+
+### Exception Hierarchy
+
+`TwendeException` (base) -> `ResourceNotFoundException`, `UnauthorizedException`,
+`ConflictException`, `BadRequestException`. Plus `GlobalExceptionHandler`
+(`@RestControllerAdvice`, auto-configured).
+
+### Utilities
+
+- `PhoneUtil` — E.164 normalisation
+- `CurrencyUtil` — format amounts per country
+- `OtpUtil` — 4-digit and 6-digit OTP generation (SecureRandom)
+- `PaginationUtil` — page request helpers
+
+---
+
+## 6. Global Conventions
+
+**These apply to every service. Never deviate.**
+
+### Entities
+```java
+@Entity
+@Table(name = "rides")
+@Getter @Setter @NoArgsConstructor
+public class Ride extends BaseEntity {
+    // All entities extend BaseEntity
+    // BaseEntity provides: UUID id (ULID-generated), Instant createdAt, Instant updatedAt, String countryCode
 }
 ```
 
 ### API Response wrapper — ALWAYS use this
 ```java
-// Every controller method returns ApiResponse<T>
 @GetMapping("/{id}")
 public ResponseEntity<ApiResponse<RideDto>> getRide(@PathVariable UUID id) {
     return ResponseEntity.ok(ApiResponse.ok(rideService.getRide(id)));
@@ -337,36 +334,42 @@ public ResponseEntity<ApiResponse<RideDto>> getRide(@PathVariable UUID id) {
 
 ### Money — NEVER use double or float
 ```java
-// Correct
-private BigDecimal amount;  // Java field
-// DB column: NUMERIC(12,2)
-
-// Wrong — never do this
-private double amount;
-private float amount;
+private BigDecimal amount;  // Java: BigDecimal
+// DB: NUMERIC(12,2)
+// WRONG: double amount; float amount;
 ```
 
 ### Timestamps — always UTC, always Instant
 ```java
-private Instant createdAt;    // correct
-private LocalDateTime time;   // wrong — no timezone info
-private Date date;            // wrong — legacy
+private Instant createdAt;     // correct
+// WRONG: LocalDateTime, Date
 ```
 
-### Reading the calling user — from security context, not request body
+### Reading the calling user — from gateway-injected headers
+The API Gateway validates the JWT and injects user context as HTTP headers.
+Downstream services read these headers — they do NOT re-validate the JWT.
+
 ```java
 @GetMapping("/me")
-public ResponseEntity<ApiResponse<UserDto>> getProfile() {
-    UUID userId = SecurityContextHolder.getContext().getAuthentication()
-        .getName()  // subject claim = userId
-        ...;
+public ResponseEntity<ApiResponse<UserDto>> getProfile(
+        @RequestHeader("X-User-Id") UUID userId,
+        @RequestHeader("X-User-Role") String role,
+        @RequestHeader("X-Country-Code") String countryCode) {
+    return ResponseEntity.ok(ApiResponse.ok(userService.getProfile(userId)));
 }
-// Or inject a helper:
+
+// Or use a shared helper component:
 @Component
-public class CurrentUser {
-    public UUID id() { ... }
-    public String role() { ... }
-    public String countryCode() { ... }
+public class RequestContext {
+    public UUID userId(HttpServletRequest request) {
+        return UUID.fromString(request.getHeader("X-User-Id"));
+    }
+    public String role(HttpServletRequest request) {
+        return request.getHeader("X-User-Role");
+    }
+    public String countryCode(HttpServletRequest request) {
+        return request.getHeader("X-Country-Code");
+    }
 }
 ```
 
@@ -378,1392 +381,226 @@ public ResponseEntity<ApiResponse<...>> create(@Valid @RequestBody CreateRideReq
 public class CreateRideRequest {
     @NotNull private VehicleType vehicleType;
     @NotNull @DecimalMin("0.0") private BigDecimal pickupLat;
-    // etc.
 }
 ```
 
-### Module boundary rule
+### Module boundary rule — services never share databases
 ```java
-// CORRECT: ride module calls driver service
-@Service
-public class RideService {
-    private final DriverService driverService;  // inject the service, not the repo
-    ...
-    DriverProfile driver = driverService.findById(driverId);
-}
-
-// WRONG: ride module accessing driver repository directly
-@Service
-public class RideService {
-    private final DriverRepository driverRepository;  // cross-module repo access — forbidden
-}
-```
-
-### Spring Events for cross-module communication
-```java
-// Publishing an event
-applicationEventPublisher.publishEvent(new RideCompletedEvent(this, ride));
-
-// Listening in another module
+// CORRECT: ride-service calls pricing-service via REST
 @Component
-public class ComplianceEventListener {
-    @EventListener
-    @Async  // non-blocking — always use @Async for event listeners
-    public void onRideCompleted(RideCompletedEvent event) {
-        complianceService.logTrip(event.getRide());
+public class PricingClient {
+    private final RestClient restClient;
+
+    public PricingClient(@Value("${twende.services.pricing-url}") String baseUrl) {
+        this.restClient = RestClient.builder().baseUrl(baseUrl).build();
+    }
+
+    public FareEstimate estimate(EstimateRequest request) {
+        return restClient.post()
+            .uri("/internal/pricing/estimate")
+            .body(request)
+            .retrieve()
+            .body(FareEstimate.class);
     }
 }
+
+// WRONG: ride-service importing pricing-service's repository
 ```
 
----
-
-## 6. Security Architecture
-
-### OAuth2 Authorization Server (Spring Authorization Server)
-- auth-service issues JWTs signed with an RSA key
-- All other controllers are resource servers that validate JWTs
-- Token claims include: `sub` (userId UUID), `roles` (list), `countryCode`
-- OTP-based login: rider/driver authenticate via phone number + 6-digit SMS OTP
-- Refresh token rotation is enabled
-
-### Resource Server (all modules except auth)
+### Kafka events for async cross-service communication
 ```java
-// In SecurityConfig.java
-http.oauth2ResourceServer(oauth2 ->
-    oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
-);
-```
+// Publishing an event
+kafkaTemplate.send("twende.rides.completed",
+    ride.getCountryCode() + ":" + ride.getId(),  // key for partition locality
+    new RideCompletedEvent(ride));
 
-### Method-level security — use on admin endpoints
-```java
-@EnableMethodSecurity  // on SecurityConfig or main class
-...
-@PreAuthorize("hasRole('ADMIN')")
-@GetMapping("/admin/drivers")
-public ResponseEntity<...> getAllDrivers() { ... }
-```
-
-### JWT custom claims — add in token customizer
-```java
-@Bean
-public OAuth2TokenCustomizer<JwtEncodingContext> tokenCustomizer() {
-    return context -> {
-        if (context.getTokenType().equals(OAuth2TokenType.ACCESS_TOKEN)) {
-            AuthUser user = authUserRepository.findById(UUID.fromString(context.getPrincipal().getName())).orElseThrow();
-            context.getClaims()
-                .claim("roles", List.of(user.getRole().name()))
-                .claim("countryCode", user.getCountryCode());
-        }
-    };
+// Consuming in another service
+@KafkaListener(topics = "twende.rides.completed", groupId = "${spring.application.name}")
+public void onRideCompleted(RideCompletedEvent event) {
+    complianceService.logTrip(event);
 }
 ```
 
-### Endpoint security rules
-- `/api/v1/auth/**` and `/oauth2/**` → public
-- `/api/v1/config/**` GET → public; PUT/POST/PATCH → ADMIN only
-- `/ws/**` → auth via `?token=` query parameter on handshake
-- `/actuator/health` → public
-- Everything else → authenticated
-
----
-
-## 7. Database Conventions
-
-### Single database: `twende`
-One PostgreSQL database. Tables are prefixed by module where needed to avoid name conflicts.
-All Flyway migrations in `src/main/resources/db/migration/`.
-
-### Migration file naming
-```
-V1__auth_schema.sql
-V2__country_config_schema.sql
-V3__user_schema.sql
-V4__driver_schema.sql
-V5__location_schema.sql
-V6__ride_schema.sql
-V7__payment_schema.sql
-V8__subscription_schema.sql
-V9__notification_schema.sql
-V10__rating_schema.sql
-V11__analytics_schema.sql
-V12__compliance_schema.sql
-V13__loyalty_schema.sql
-V14__seed_tanzania.sql
-V15__seed_notification_templates.sql
-V16__seed_loyalty_rules.sql
-V17__location_zones_and_geocache.sql
-```
-
-### Column conventions
+### Database conventions
 ```sql
-id           UUID         PRIMARY KEY  -- ULID generated by application (UlidGenerator), no DB default needed
+id           UUID         PRIMARY KEY  -- ULID generated by application
 country_code CHAR(2)      NOT NULL
 created_at   TIMESTAMPTZ  NOT NULL DEFAULT now()
 updated_at   TIMESTAMPTZ  NOT NULL DEFAULT now()
--- Money: always NUMERIC(12,2), never FLOAT or DOUBLE PRECISION
-amount       NUMERIC(12,2) NOT NULL
--- Enums: VARCHAR with CHECK or PostgreSQL native ENUM
-status       VARCHAR(30)  NOT NULL
+amount       NUMERIC(12,2) NOT NULL    -- Money: always NUMERIC, never FLOAT
+status       VARCHAR(30)  NOT NULL     -- Enums: VARCHAR with CHECK or PG enum
 ```
 
-### JPA config: NEVER use ddl-auto=create or update in production
-```yaml
-spring.jpa.hibernate.ddl-auto: validate  # Flyway manages schema
+### Flyway migrations — per service
+Each service has its own `src/main/resources/db/migration/` directory.
 ```
+V1__{description}.sql
+V2__{description}.sql
+```
+`ddl-auto: validate` — Flyway manages schema, Hibernate only validates.
 
 ---
 
-## 8. Module Specifications
+## 7. Security Architecture
 
-### Module: auth
+### Overview
 
-**Purpose:** Phone OTP authentication, JWT issuance, token revocation.
-
-**Key entities:**
-- `AuthUser(id UUID, phoneNumber VARCHAR(20) UNIQUE, countryCode CHAR(2), role VARCHAR(20), isActive BOOLEAN, phoneVerified BOOLEAN)`
-- `OtpCode(id UUID, phoneNumber VARCHAR(20), code VARCHAR(6), expiresAt TIMESTAMPTZ, used BOOLEAN, attempts INT)`
-
-**Key service methods:**
-```java
-void requestOtp(String phoneNumber, String countryCode);
-// Rate limit: max 3 OTP requests per phone per 10 min (Redis counter)
-// Generate 6-digit OTP, save to DB with 5-min expiry, send via SMS (Africa's Talking REST API)
-
-TokenResponse verifyOtp(String phoneNumber, String otp);
-// Check OTP: valid, not used, not expired, attempts < 3
-// Mark OTP as used
-// Issue OAuth2 access + refresh token via programmatic token generation
-// Return isNewUser=true if first login
-
-void register(UUID userId, String fullName, UserRole role);
-// Called after first OTP verify
-// Create AuthUser, publish Spring event → user/driver module creates profile
-
-void logout(String refreshToken);
-// Add jti to Redis blocklist (TTL = remaining refresh token lifetime)
+```
+External client → API Gateway → validates JWT (JWKS from auth-service) → injects headers → route to service
+Internal service → service → direct REST call (bypasses gateway), trusted internal network
 ```
 
-**OTP rate limiting (Redis):**
-```java
-String key = "otp:rate:" + phoneNumber;
-Long count = redisTemplate.opsForValue().increment(key);
-if (count == 1) redisTemplate.expire(key, 10, TimeUnit.MINUTES);
-if (count > 3) throw new TooManyRequestsException("Too many OTP requests");
-```
+### auth-service (OAuth2 Authorization Server)
+- Issues JWTs signed with RSA key pair
+- Exposes JWKS at `/oauth2/jwks`
+- OTP-based login: phone number + 6-digit SMS OTP
+- Token claims: `sub` (userId UUID), `roles` (list), `countryCode`, `scope`
+- Refresh token rotation enabled
+- Token blocklist via Redis (on logout)
 
-**Key endpoint:** `POST /api/v1/auth/otp/request`, `POST /api/v1/auth/otp/verify`,
-`POST /api/v1/auth/register`, `POST /api/v1/auth/logout`
+### API Gateway (JWT validator + header injector)
+- Validates JWT against auth-service JWKS on every request
+- Injects headers: `X-User-Id`, `X-User-Role`, `X-Country-Code`
+- Rate limiting: per-IP and per-user via Redis
+- WebSocket routes (`/ws/**`) bypass auth filter (auth on handshake instead)
+- CORS configured for client apps
+
+### Downstream services (trust gateway headers)
+- Do NOT include `spring-boot-starter-oauth2-resource-server`
+- Read `X-User-Id`, `X-User-Role`, `X-Country-Code` from request headers
+- Use `@PreAuthorize` equivalents by checking `X-User-Role` header
+- Admin endpoints check `X-User-Role == "ADMIN"`
+
+### Endpoint security rules
+- `/api/v1/auth/**` and `/oauth2/**` → public (no JWT required)
+- `/api/v1/config/**` GET → public; PUT/POST/PATCH → ADMIN only
+- `/ws/**` → auth via `?token=` query parameter on WebSocket handshake
+- `/actuator/health` → public
+- `/internal/**` → service-to-service only (not routed through gateway)
+- Everything else → authenticated (JWT required via gateway)
 
 ---
 
-### Module: countryconfig
+## 8. Kafka Event Architecture
 
-**Purpose:** Master configuration for each country. Source of truth for currencies, vehicle
-types, pricing, payment methods, regulatory requirements, feature flags.
-
-**Key entities:**
-- `CountryConfig(code CHAR(2) PK, name, status, defaultLocale, currencyCode, currencySymbol, minorUnits, phonePrefix, cashEnabled, subscriptionAggregator, regulatoryAuthority, tripReportingRequired, smsProvider VARCHAR(30) DEFAULT 'AFRICASTALKING', pushProvider VARCHAR(30) DEFAULT 'FCM', features JSONB)`
-- `VehicleTypeConfig(id UUID, countryCode, vehicleType, displayName, maxPassengers, baseFare NUMERIC(12,2), perKm NUMERIC(12,2), perMinute NUMERIC(12,2), minimumFare NUMERIC(12,2), cancellationFee NUMERIC(12,2), surgeMultiplierCap NUMERIC(4,2), isActive BOOLEAN)`
-- `OperatingCity(id UUID, countryCode, cityId, name, timezone, status, centerLat, centerLng, radiusKm, geocodingProvider VARCHAR(30) DEFAULT 'GOOGLE', routingProvider VARCHAR(30) DEFAULT 'GOOGLE', autocompleteProvider VARCHAR(30) DEFAULT 'GOOGLE')`
-
-Provider columns control which mapping provider is used per city. Valid values: `GOOGLE`,
-`OSRM` (routing only), `NOMINATIM` (geocoding only). The location module's `ProviderFactory`
-reads these to resolve the correct implementation — enables gradual per-city migration.
-
-**Caching:** Cache country config in Redis with 5-minute TTL.
-```java
-@Cacheable(value = "country-config", key = "#code")
-public CountryConfigDto getConfig(String code) { ... }
-
-@CacheEvict(value = "country-config", key = "#code")
-public void updateConfig(String code, ...) { ... }
+### Topic naming convention
+```
+twende.{domain}.{event-name}
 ```
 
-Enable caching: `@EnableCaching` on main class or config class.
-Configure Redis as cache manager in `RedisConfig`.
+### Key format
+```
+{countryCode}:{entityId}
+```
+This ensures all events for one ride land on the same Kafka partition, maintaining ordering.
 
-**Tanzania seed data:** Insert in `V13__seed_tanzania.sql` (see section 10).
+### Serialisation
+JSON with type headers (`JsonSerializer` / `JsonDeserializer`). All events extend `KafkaEvent`
+from `common-lib`.
+
+### Consumer groups
+Each service uses its own name as the consumer group ID:
+`spring.kafka.consumer.group-id: ${spring.application.name}`
+
+### Topic Registry
+
+| Topic | Producer | Consumers | Trigger |
+|---|---|---|---|
+| `twende.rides.requested` | ride-service | matching-service | Ride created |
+| `twende.rides.status-updated` | ride-service | notification-service | Any status change |
+| `twende.rides.completed` | ride-service | payment, rating, analytics, compliance, loyalty | Ride completed |
+| `twende.rides.cancelled` | ride-service | notification-service, analytics | Ride cancelled |
+| `twende.rides.fare-boosted` | ride-service | matching-service | Rider boosts fare |
+| `twende.rides.offer-accepted` | matching-service | ride-service | Driver wins acceptance race |
+| `twende.drivers.matched` | matching-service | ride-service, notification-service | Legacy (use offer-accepted) |
+| `twende.drivers.status-updated` | driver-service | location-service | Driver goes online/offline |
+| `twende.drivers.rejected-ride` | matching-service | ride-service | Driver explicitly rejects offer |
+| `twende.drivers.offer-notification` | matching-service | notification-service | Push offer to driver |
+| `twende.drivers.approved` | driver-service | notification-service | Admin approves driver |
+| `twende.payments.completed` | payment-service | notification-service, analytics | Payment processed |
+| `twende.payments.failed` | payment-service | notification-service | Payment failed |
+| `twende.subscriptions.activated` | subscription-service | driver-service, notification-service | Bundle purchased |
+| `twende.subscriptions.expired` | subscription-service | driver-service, notification-service | Bundle expired |
+| `twende.users.registered` | auth-service | user-service, driver-service | New user registered |
+| `twende.notifications.send` | any service | notification-service | Direct notification request |
+| `twende.loyalty.free-ride-earned` | loyalty-service | notification-service | Free ride offer awarded |
+| `twende.config.country-updated` | country-config-service | all services with cached config | Config changed |
+| `twende.ratings.submitted` | rating-service | analytics-service | Rating submitted |
 
 ---
 
-### Module: user
+## 9. Data Architecture
 
-**Purpose:** Rider profile, preferences, saved places.
+### Database-per-service
 
-**Key entities:**
-- `UserProfile(id UUID — same as AuthUser id, countryCode, fullName, email, profilePhotoUrl, preferredLocale, isActive)`
-- `SavedPlace(id UUID, userId UUID, label, address, latitude, longitude)`
+Each service has its own PostgreSQL database. The `infra/postgres/init-databases.sh` script
+creates all databases for local development.
 
-**Profile creation:** Listen for `UserRegisteredEvent` from auth module.
-```java
-@EventListener @Async
-public void onUserRegistered(UserRegisteredEvent event) {
-    if (event.getRole() == UserRole.RIDER) {
-        userRepository.save(new UserProfile(event.getUserId(), event.getFullName(), event.getCountryCode()));
-    }
-}
-```
+### Redis usage
 
-**Key endpoints:** `GET/PUT /api/v1/users/me`, `GET/POST/DELETE /api/v1/users/me/saved-places`,
-`GET /api/v1/users/me/ride-history`
-
----
-
-### Module: driver
-
-**Purpose:** Driver profile, document verification, vehicle registration, online/offline status.
-
-**Key entities:**
-- `DriverProfile(id UUID, countryCode, fullName, email, profilePhotoUrl, status DriverStatus, rejectionReason, approvedAt)`
-- `DriverVehicle(id UUID, driverId UUID, vehicleType, make, model, year, plateNumber, color, isActive)`
-- `DriverDocument(id UUID, driverId UUID, documentType, fileUrl, status[PENDING/VERIFIED/REJECTED], verifiedAt, expiresAt)`
-
-**DriverStatus enum:** `PENDING_APPROVAL, APPROVED, OFFLINE, ONLINE_AVAILABLE, ONLINE_ON_TRIP, SUSPENDED, REJECTED`
-
-**Go-online validation:**
-```java
-public void goOnline(UUID driverId) {
-    DriverProfile driver = findApproved(driverId);
-    // Check active subscription
-    boolean hasSubscription = subscriptionService.hasActiveSubscription(driverId);
-    if (!hasSubscription) throw new BadRequestException("Purchase a bundle to go online");
-    // Check vehicle registered
-    if (!hasActiveVehicle(driverId)) throw new BadRequestException("Register a vehicle first");
-    driver.setStatus(DriverStatus.ONLINE_AVAILABLE);
-    driverRepository.save(driver);
-    locationService.addDriverToGeoIndex(driverId, driver.getCountryCode(), driver.getActiveVehicleType());
-}
-```
-
-**Document upload:** Files go to MinIO. Store only the URL in `DriverDocument.fileUrl`.
-
-**Key endpoints:** `GET/PUT /api/v1/drivers/me`, `PUT /api/v1/drivers/me/status`,
-`POST /api/v1/drivers/me/documents`, `POST /api/v1/drivers/me/vehicles`,
-`GET/PUT /api/v1/drivers/{id}/approval` (ADMIN)
+| Purpose | Key pattern | TTL | Used by |
+|---|---|---|---|
+| Driver live positions | `drivers:{countryCode}:{vehicleType}` | — (GEO set) | location-service |
+| Driver location detail | `driver:location:{driverId}` | 90s | location-service |
+| Trip trace (in-progress) | `ride:trace:{rideId}` | 48h | location-service |
+| Country config cache | `country-config:{code}` | 5 min | country-config-service |
+| OTP rate limiting | `otp:rate:{phoneNumber}` | 10 min | auth-service |
+| Token blocklist | `token:blocked:{jti}` | remaining TTL | auth-service |
+| Ride acceptance lock | `ride_accepted:{rideId}` | 60s | matching-service |
+| Driver offer dedup | `driver_offered:{driverId}:{rideId}` | 20s | matching-service |
+| Offered drivers set | `rides_offered_to:{rideId}` | 300s | matching-service |
+| Driver rejection set | `driver_rejected:{rideId}` | 300s | matching-service |
+| Surge multiplier | `surge:{countryCode}:{vehicleType}` | 60s | pricing-service |
+| Rating aggregate | `rating:driver:{driverId}` | 1h | rating-service |
+| API rate limits | `ratelimit:{ip}` / `ratelimit:{userId}` | 1s | api-gateway |
+| Distance/direction cache | `route:{coordsHash}` | 1h | location-service |
 
 ---
 
-### Module: location
+## 10. Inter-Service Communication
 
-**Purpose:** Real-time driver location via WebSocket. Redis GEO for nearby-driver queries.
-Geocoding, reverse geocoding, place autocomplete, and routing via provider abstraction.
-Geofence zone management (OPERATING, SURGE, AIRPORT, RESTRICTED, PICKUP_ONLY).
-Stores completed trip traces in PostgreSQL.
+### Synchronous: Spring RestClient
 
-**Key entities:**
-- `Zone(id UUID, countryCode, cityId UUID, name, boundary GEOGRAPHY(POLYGON,4326), type VARCHAR(20), config JSONB, isActive BOOLEAN)`
-  — Zone types: `OPERATING` (service boundary), `SURGE` (surge pricing area), `AIRPORT` (surcharge + pickup instructions), `RESTRICTED` (no service), `PICKUP_ONLY` (pickup allowed, no dropoff)
-  — Config examples: SURGE `{"multiplier": 1.5}`, AIRPORT `{"surcharge": 2000, "pickupInstructions": "Terminal 2 parking"}`, RESTRICTED `{"reason": "Government restricted area"}`
-- `GeocodeCache(id UUID, countryCode, queryHash VARCHAR(64) UNIQUE, query TEXT, latitude NUMERIC(10,7), longitude NUMERIC(10,7), address TEXT, provider VARCHAR(30), hitCount INT, expiresAt TIMESTAMPTZ)`
-
-**V17 migration (PostGIS):**
-```sql
-CREATE EXTENSION IF NOT EXISTS postgis;
-
-CREATE TABLE zones (
-    id            UUID PRIMARY KEY,
-    country_code  CHAR(2) NOT NULL,
-    city_id       UUID NOT NULL REFERENCES operating_cities(id),
-    name          VARCHAR(100) NOT NULL,
-    boundary      GEOGRAPHY(POLYGON, 4326) NOT NULL,
-    type          VARCHAR(20) NOT NULL,
-    config        JSONB DEFAULT '{}',
-    is_active     BOOLEAN DEFAULT TRUE,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX idx_zones_city_type ON zones(city_id, type);
-CREATE INDEX idx_zones_boundary ON zones USING GIST(boundary);
-
-CREATE TABLE geocode_cache (
-    id            UUID PRIMARY KEY,
-    country_code  CHAR(2) NOT NULL,
-    query_hash    VARCHAR(64) UNIQUE NOT NULL,
-    query         TEXT NOT NULL,
-    latitude      NUMERIC(10,7) NOT NULL,
-    longitude     NUMERIC(10,7) NOT NULL,
-    address       TEXT,
-    provider      VARCHAR(30),
-    hit_count     INTEGER DEFAULT 1,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    expires_at    TIMESTAMPTZ
-);
-CREATE INDEX idx_geocache_hash ON geocode_cache(query_hash);
-
-ALTER TABLE operating_cities ADD COLUMN geocoding_provider VARCHAR(30) NOT NULL DEFAULT 'GOOGLE';
-ALTER TABLE operating_cities ADD COLUMN routing_provider VARCHAR(30) NOT NULL DEFAULT 'GOOGLE';
-ALTER TABLE operating_cities ADD COLUMN autocomplete_provider VARCHAR(30) NOT NULL DEFAULT 'GOOGLE';
-```
-
-**Provider abstraction (same pattern as PaymentProvider):**
-```java
-public interface GeocodingProvider {
-    String getId();  // "google", "nominatim"
-    GeocodingResult geocode(String address, LatLng bias);
-    GeocodingResult reverseGeocode(LatLng point);
-}
-
-public interface RoutingProvider {
-    String getId();  // "google", "osrm"
-    Route getRoute(LatLng origin, LatLng destination);
-    int getEtaMinutes(LatLng origin, LatLng destination);
-}
-
-public interface AutocompleteProvider {
-    String getId();  // "google", "nominatim"
-    List<PlaceResult> search(String query, LatLng bias, String countryCode, int limit);
-}
-```
-
-**ProviderFactory — resolves provider per city:**
-```java
-@Component
-public class ProviderFactory {
-    private final Map<String, GeocodingProvider> geocodingProviders;
-    private final Map<String, RoutingProvider> routingProviders;
-    private final Map<String, AutocompleteProvider> autocompleteProviders;
-    private final CountryConfigService countryConfigService;
-
-    public GeocodingProvider geocodingFor(UUID cityId) {
-        OperatingCity city = countryConfigService.getCity(cityId);
-        return geocodingProviders.get(city.getGeocodingProvider().toLowerCase());
-    }
-    // Same pattern for routingFor(cityId) and autocompleteFor(cityId)
-}
-```
-
-**GoogleMapsClient — RestClient, no SDK:**
-```java
-@Component
-public class GoogleMapsClient {
-    private final RestClient restClient;
-    private final String apiKey;
-
-    public GoogleMapsClient(@Value("${twende.maps.google.api-key}") String apiKey) {
-        this.apiKey = apiKey;
-        this.restClient = RestClient.builder()
-            .baseUrl("https://maps.googleapis.com/maps/api")
-            .defaultHeader("Accept", "application/json")
-            .build();
-    }
-
-    public GeocodingResponse geocode(String address) { ... }
-    public GeocodingResponse reverseGeocode(double lat, double lng) { ... }
-    public DirectionsResponse directions(double oLat, double oLng, double dLat, double dLng) { ... }
-    public DistanceMatrixResponse distanceMatrix(double oLat, double oLng, double dLat, double dLng) { ... }
-    public PlacesAutocompleteResponse autocomplete(String input, double lat, double lng, String countryCode) { ... }
-}
-```
-
-**GeofenceService — PostGIS point-in-polygon:**
-```java
-@Service
-public class GeofenceService {
-    public Optional<Zone> findZone(UUID cityId, String type, BigDecimal lat, BigDecimal lng) {
-        return zoneRepository.findActiveZoneContainingPoint(cityId, type, lng, lat);
-        // Native query: SELECT * FROM zones WHERE city_id = ? AND type = ? AND is_active = true
-        //   AND ST_Covers(boundary, ST_Point(?, ?)::geography)
-    }
-
-    public boolean isInServiceArea(UUID cityId, BigDecimal lat, BigDecimal lng) {
-        return findZone(cityId, "OPERATING", lat, lng).isPresent();
-    }
-
-    public List<Zone> findAllZonesContaining(UUID cityId, BigDecimal lat, BigDecimal lng) {
-        return zoneRepository.findAllActiveZonesContainingPoint(cityId, lng, lat);
-    }
-}
-```
-
-**GeocodingService — cache-through with DB:**
-```java
-@Service
-public class GeocodingService {
-    public GeocodingResult geocode(String address, LatLng bias, UUID cityId) {
-        String hash = DigestUtils.sha256Hex(address.toLowerCase().strip());
-        Optional<GeocodeCache> cached = geocodeCacheRepository.findByQueryHash(hash);
-        if (cached.isPresent() && cached.get().getExpiresAt().isAfter(Instant.now())) {
-            cached.get().setHitCount(cached.get().getHitCount() + 1);
-            geocodeCacheRepository.save(cached.get());
-            return toResult(cached.get());
-        }
-        GeocodingProvider provider = providerFactory.geocodingFor(cityId);
-        GeocodingResult result = provider.geocode(address, bias);
-        saveToCache(hash, address, result, provider.getId());
-        return result;
-    }
-    // Cache entries expire after 30 days. Scheduled cleanup weekly.
-}
-```
-
-**WebSocket:** `ws://host/ws/location?token={jwt}` — validate JWT in `HandshakeInterceptor`.
-
-**Driver location update message (driver → server):**
-```json
-{ "type": "LOCATION_UPDATE", "lat": -6.79, "lng": 39.21, "bearing": 45, "speed": 32 }
-```
-
-**Redis operations:**
-```java
-// Add/update driver position
-redisTemplate.opsForGeo().add(
-    "drivers:" + countryCode + ":" + vehicleType,
-    new Point(lng, lat), driverId.toString()
-);
-
-// Set driver detail hash (TTL 90s — stale if no updates)
-redisTemplate.opsForHash().putAll("driver:location:" + driverId, Map.of(...));
-redisTemplate.expire("driver:location:" + driverId, 90, TimeUnit.SECONDS);
-
-// Find nearby drivers — NO COUNT limit, broadcast to ALL nearby
-List<GeoResult<RedisGeoCommands.GeoLocation<String>>> nearby =
-    redisTemplate.opsForGeo().radius(
-        "drivers:" + countryCode + ":" + vehicleType,
-        new Circle(new Point(lng, lat), new Distance(radiusKm, Metrics.KILOMETERS)),
-        GeoRadiusCommandArgs.newGeoRadiusArgs().includeDistance().sortAscending()
-    );
-```
-
-**Rider location push:** When a ride is active, server pushes driver location to the rider's
-WebSocket session every time the driver sends an update. Use `WebSocketSessionRegistry`
-(`ConcurrentHashMap<UUID, WebSocketSession>`) to find the rider's session.
-
-**Trip trace:** During `IN_PROGRESS`, append each location point to
-`RPUSH ride:trace:{rideId}`. When ride completes, flush trace to `trip_traces` PostgreSQL table.
-
-**Caching strategy:**
-- Geocoding / reverse geocoding: DB-level `geocode_cache` table (30-day TTL)
-- Distance matrix / directions: Redis `@Cacheable` keyed on coordinates rounded to 3dp (1-hour TTL)
-- Autocomplete: NOT cached (session-dependent, low cache value)
-
-**Key endpoints:**
-```
-GET    /api/v1/locations/geocode?address=&cityId=          Address → lat/lng
-GET    /api/v1/locations/reverse?lat=&lng=&cityId=         Lat/lng → address
-GET    /api/v1/locations/autocomplete?q=&lat=&lng=&cityId= Place search
-POST   /api/v1/locations/route                              Route between two points
-POST   /api/v1/locations/eta                                ETA only
-GET    /api/v1/locations/zones/check?lat=&lng=&cityId=     What zones contain this point?
-GET    /api/v1/locations/cities/{cityId}/zones              List zones for city
-POST   /api/v1/locations/cities/{cityId}/zones              Create zone (ADMIN)
-PUT    /api/v1/locations/zones/{id}                         Update zone (ADMIN)
-DELETE /api/v1/locations/zones/{id}                         Deactivate zone (ADMIN)
-```
-
-**Provider migration plan:**
-- Phase 1: All cities use GOOGLE for geocoding, routing, and autocomplete
-- Phase 2: Migrate routing to self-hosted OSRM. Update `routing_provider` column per city.
-- Phase 3: Migrate geocoding to Nominatim. Evaluate autocomplete alternatives.
-- `ProviderFactory` reads per-city config — zero code changes in upstream services when switching.
-
----
-
-### Module: pricing
-
-**Purpose:** Fare estimation and final fare calculation.
-
-**Fare formula:**
-```java
-BigDecimal fare = baseFare
-    .add(distanceKm.multiply(perKm))
-    .add(durationMinutes.multiply(perMinute))
-    .multiply(surgeMultiplier);
-
-return fare.max(minimumFare).setScale(0, RoundingMode.HALF_UP);
-// Tanzania uses TZS — minorUnits = 0, so round to whole shillings
-```
-
-**Surge:** Redis key `surge:{countryCode}:{vehicleType}` (float, updated every 60s by scheduler).
-Surge = min(activeRequests / availableDrivers, surgeMultiplierCap). Only applied if
-`countryConfig.features.surgeEnabled = true`.
-
-**For estimates:** Call `routingService.getRoute(pickup, dropoff, cityId)` from the location module.
-The routing service delegates to the configured provider (Google/OSRM) per city. Pricing module
-never calls mapping APIs directly.
-**For final fare:** Use actual `distanceMetres` and `durationSeconds` from the ride record
-(populated from trip trace on completion).
-
-**Zone-based pricing adjustments:** Before calculating fare, check `geofenceService.findAllZonesContaining()`
-for pickup and dropoff points:
-- `AIRPORT` zone: add surcharge from `zone.config.surcharge` to the final fare
-- `SURGE` zone: use `zone.config.multiplier` as zone-level surge (stacks with demand surge, capped by `surgeMultiplierCap`)
-- `RESTRICTED` zone: reject the ride request with error from `zone.config.reason`
-
-**Key endpoints:** `POST /api/v1/pricing/estimate`, `POST /api/v1/pricing/calculate`
-
----
-
-### Module: matching
-
-**Purpose:** Broadcast-and-accept matching. Find nearby drivers, send offers, handle the
-accept/reject race using Redis atomic operations.
-
-**Service area validation (in RideService.createRide(), before broadcasting):**
-```java
-OperatingCity city = countryConfigService.findCityContaining(
-    ride.getCountryCode(), ride.getPickupLat(), ride.getPickupLng());
-if (city == null)
-    throw new BadRequestException("Pickup location is outside our service area");
-if (!geofenceService.isInServiceArea(city.getId(), ride.getPickupLat(), ride.getPickupLng()))
-    throw new BadRequestException("Pickup location is outside our service area");
-if (geofenceService.findZone(city.getId(), "RESTRICTED", ride.getPickupLat(), ride.getPickupLng()).isPresent())
-    throw new BadRequestException("Pickup location is in a restricted area");
-ride.setCityId(city.getId());
-```
-
-**Broadcast flow:**
-```java
-public void broadcastOffer(Ride ride) {
-    List<String> candidates = locationService.findNearbyDrivers(
-        ride.getCountryCode(), ride.getVehicleType(),
-        ride.getPickupLat(), ride.getPickupLng(), 3.0);
-
-    for (String driverId : candidates) {
-        // Deduplicate — don't offer same ride twice to same driver
-        Boolean isNew = redisTemplate.opsForValue()
-            .setIfAbsent("driver_offered:" + driverId + ":" + ride.getId(), "1",
-                Duration.ofSeconds(120));
-        if (Boolean.TRUE.equals(isNew)) {
-            redisTemplate.opsForSet().add("rides_offered_to:" + ride.getId(), driverId);
-            redisTemplate.expire("rides_offered_to:" + ride.getId(), 300, TimeUnit.SECONDS);
-            notificationService.sendDriverOffer(UUID.fromString(driverId), ride);
-        }
-    }
-}
-```
-
-**Accept race (atomic):**
-```java
-public boolean tryAcceptRide(UUID rideId, UUID driverId) {
-    Boolean won = redisTemplate.opsForValue()
-        .setIfAbsent("ride_accepted:" + rideId, driverId.toString(), Duration.ofSeconds(60));
-    return Boolean.TRUE.equals(won);
-}
-```
-
-**Driver reject:**
-```java
-public void handleDriverReject(UUID rideId, UUID driverId) {
-    redisTemplate.opsForSet().add("driver_rejected:" + rideId, driverId.toString());
-    redisTemplate.expire("driver_rejected:" + rideId, 300, TimeUnit.SECONDS);
-    applicationEventPublisher.publishEvent(new DriverRejectedRideEvent(this, rideId, driverId));
-}
-```
-
-**Expansion scheduler** (runs every 30s):
-```java
-@Scheduled(fixedDelay = 30_000)
-public void expandMatchingRadius() {
-    // Query rides in REQUESTED status from rideService
-    // For each ride, check age and expand radius:
-    // < 60s → 3km (already done by initial broadcast)
-    // 60–120s → 5km batch
-    // 120–180s → 10km batch
-    // > 180s → publish NoDriverFoundEvent via applicationEventPublisher
-}
-```
-
-**Key endpoints (driver-facing, called via RideController):**
-`POST /api/v1/rides/{id}/accept` — driver accepts an offer
-`POST /api/v1/rides/{id}/reject` — driver explicitly rejects
-
----
-
-### Module: ride
-
-**Purpose:** Core ride lifecycle. Orchestrates matching, pricing, payment.
-
-**RideStatus state machine:**
-```
-REQUESTED → DRIVER_ASSIGNED → DRIVER_ARRIVED → IN_PROGRESS → COMPLETED
-     ↓              ↓
-CANCELLED    CANCELLED (after assignment)
-     ↓
-NO_DRIVER_FOUND
-```
-
-**Key entity fields:**
-```java
-private UUID riderId;
-private UUID driverId;             // null until matched
-private RideStatus status;
-private VehicleType vehicleType;
-private UUID cityId;                   // resolved from pickup location at creation time
-private BigDecimal pickupLat, pickupLng;
-private String pickupAddress;
-private BigDecimal dropoffLat, dropoffLng;
-private String dropoffAddress;
-private BigDecimal estimatedFare;
-private BigDecimal fareBoostAmount;   // NEW: 0 if no boost
-private BigDecimal finalFare;
-private String currencyCode;
-private boolean freeRide;              // true if loyalty offer applied
-private UUID freeRideOfferId;          // FK to free_ride_offers, null if not free
-private int driverRejectionCount;     // NEW: incremented on each driver reject
-private String tripStartOtpHash;      // NEW: bcrypt hash of 4-digit code
-private Instant tripStartOtpExpiresAt; // NEW
-private int tripStartOtpAttempts;      // NEW: max 3
-private Integer distanceMetres;
-private Integer durationSeconds;
-private Instant requestedAt, assignedAt, arrivedAt, startedAt, completedAt, cancelledAt;
-private String cancelReason;
-private String cancelledBy;            // RIDER / DRIVER / SYSTEM
-private Instant matchingTimeoutAt;     // = requestedAt + 3 min
-```
-
-**Fare boost validation:**
-```java
-public void boostFare(UUID rideId, UUID riderId, BigDecimal boostAmount) {
-    Ride ride = findByIdAndRider(rideId, riderId);
-    if (ride.getStatus() != RideStatus.REQUESTED)
-        throw new BadRequestException("Can only boost fare before a driver is assigned");
-    if (boostAmount.compareTo(BigDecimal.ZERO) <= 0)
-        throw new BadRequestException("Boost amount must be positive");
-
-    VehicleTypeConfig vtc = countryConfigService.getVehicleTypeConfig(
-        ride.getCountryCode(), ride.getVehicleType());
-    BigDecimal maxFare = vtc.getBaseFare().multiply(vtc.getSurgeMultiplierCap());
-    BigDecimal newFare = ride.getEstimatedFare().add(boostAmount);
-    if (newFare.compareTo(maxFare) > 0)
-        throw new BadRequestException("Fare cannot exceed maximum of " + maxFare);
-
-    ride.setFareBoostAmount(ride.getFareBoostAmount().add(boostAmount));
-    ride.setEstimatedFare(newFare);
-    rideRepository.save(ride);
-    applicationEventPublisher.publishEvent(new RideFareBoostedEvent(this, ride));
-    matchingService.rebroadcastOffer(ride);  // re-offer to un-offered drivers
-}
-```
-
-**OTP generation (on DRIVER_ARRIVED):**
-```java
-private void generateTripOtp(Ride ride) {
-    String otp = OtpUtil.generate4Digit();
-    ride.setTripStartOtpHash(passwordEncoder.encode(otp));
-    ride.setTripStartOtpExpiresAt(Instant.now().plus(10, ChronoUnit.MINUTES));
-    ride.setTripStartOtpAttempts(0);
-    rideRepository.save(ride);
-    applicationEventPublisher.publishEvent(new TripStartOtpGeneratedEvent(this, ride, otp));
-    // Notification module listens to this event and sends push to rider
-}
-```
-
-**OTP verification (start trip):**
-```java
-public void startTripWithOtp(UUID rideId, UUID driverId, String otp) {
-    Ride ride = findByIdAndDriver(rideId, driverId);
-    if (ride.getStatus() != RideStatus.DRIVER_ARRIVED)
-        throw new BadRequestException("Driver must be marked as arrived first");
-    if (ride.getTripStartOtpExpiresAt().isBefore(Instant.now())) {
-        regenerateAndSendOtp(ride);
-        throw new BadRequestException("Code expired. A new code was sent to the rider.");
-    }
-    if (!passwordEncoder.matches(otp, ride.getTripStartOtpHash())) {
-        ride.setTripStartOtpAttempts(ride.getTripStartOtpAttempts() + 1);
-        if (ride.getTripStartOtpAttempts() >= 3) {
-            regenerateAndSendOtp(ride);
-            throw new BadRequestException("Too many attempts. A new code was sent to the rider.");
-        }
-        throw new BadRequestException("Wrong code. " + (3 - ride.getTripStartOtpAttempts()) + " attempt(s) left.");
-    }
-    ride.setStatus(RideStatus.IN_PROGRESS);
-    ride.setStartedAt(Instant.now());
-    ride.setTripStartOtpHash(null);  // single use
-    rideRepository.save(ride);
-}
-```
-
-**Rejection counter:** Listen for `DriverRejectedRideEvent`:
-```java
-@EventListener @Async
-public void onDriverRejected(DriverRejectedRideEvent event) {
-    Ride ride = rideRepository.findById(event.getRideId()).orElseThrow();
-    ride.setDriverRejectionCount(ride.getDriverRejectionCount() + 1);
-    rideDriverRejectionRepository.save(new RideDriverRejection(ride.getId(), event.getDriverId()));
-    rideRepository.save(ride);
-    // Notify rider of updated count via notification service
-    notificationService.sendRejectionCountUpdate(ride.getRiderId(), ride.getDriverRejectionCount(), ride.getId());
-    // At 3 rejections, suggest fare boost
-    if (ride.getDriverRejectionCount() == 3) {
-        notificationService.sendFareBoostNudge(ride.getRiderId(), ride.getId());
-    }
-}
-```
-
-**Key endpoints:**
-```
-POST   /api/v1/rides                       Create ride (rider)
-GET    /api/v1/rides/{id}                  Get ride status
-PUT    /api/v1/rides/{id}/boost            Boost fare (rider)
-DELETE /api/v1/rides/{id}                  Cancel ride (rider)
-GET    /api/v1/rides/history               Ride history (rider)
-POST   /api/v1/rides/{id}/accept           Accept offer (driver)
-POST   /api/v1/rides/{id}/reject           Reject offer (driver)
-PUT    /api/v1/rides/{id}/arrived          Mark as arrived (driver)
-POST   /api/v1/rides/{id}/start            Start trip with OTP (driver)
-PUT    /api/v1/rides/{id}/complete         Complete trip (driver)
-POST   /api/v1/rides/{id}/otp/resend       Resend OTP to rider
-GET    /api/v1/rides/current               Driver's current ride
-```
-
----
-
-### Module: payment
-
-**Purpose:** Driver wallet management, subscription payments (Selcom mobile money),
-and driver payouts. Riders pay cash only — no rider-side payment processing.
-
-**Payment flows:**
-- **Rider → Driver (normal ride):** Cash at end of trip. No digital processing needed.
-- **Rider → Driver (free loyalty ride):** Twende credits driver wallet automatically on trip completion.
-- **Driver → Twende (subscription):** Selcom mobile money push-pay.
-- **Driver ← Twende (payout):** Selcom disburse from driver wallet to mobile money.
-
-**Provider pattern (for driver-side payments only):**
-```java
-public interface PaymentProvider {
-    String getId();  // "selcom"
-    PaymentResult charge(ChargeRequest request);   // subscription purchase
-    PaymentResult disburse(DisburseRequest request); // wallet payout
-}
-```
-
-**Wallet update must be transactional:**
-```java
-@Transactional
-public void creditDriverWallet(UUID driverId, BigDecimal amount, String description) {
-    DriverWallet wallet = walletRepository.findByDriverId(driverId)
-        .orElseGet(() -> new DriverWallet(driverId));
-    wallet.setBalance(wallet.getBalance().add(amount));
-    BigDecimal newBalance = wallet.getBalance();
-    walletRepository.save(wallet);
-    walletEntryRepository.save(new WalletEntry(driverId, "CREDIT", amount, newBalance, description));
-}
-```
-
-**Event listener for ride completion:**
-```java
-@EventListener @Async
-public void onRideCompleted(RideCompletedEvent event) {
-    Ride ride = event.getRide();
-    if (ride.isFreeRide()) {
-        // Loyalty ride — Twende pays the driver
-        walletService.creditDriverWallet(ride.getDriverId(), ride.getFinalFare(),
-            "Twende loyalty ride payout — ride " + ride.getId());
-    }
-    // Cash rides: no wallet action needed, driver already has the cash
-}
-```
-
-**Key endpoints:** `GET /api/v1/payments/wallet`, `GET /api/v1/payments/earnings`,
-`POST /api/v1/payments/withdraw`, `GET /api/v1/payments/history`
-
----
-
-### Module: subscription
-
-**Purpose:** Driver subscription bundles. Blocks driver from going online without active bundle.
-
-**Plans (Tanzania seed data):**
-```sql
-('TZ','DAILY',  2000, 'TZS', 24,  'Pakiti ya Siku')
-('TZ','WEEKLY', 10000,'TZS', 168, 'Pakiti ya Wiki')
-('TZ','MONTHLY',35000,'TZS', 720, 'Pakiti ya Mwezi')
-```
-
-**Public check (used by driver module):**
-```java
-public boolean hasActiveSubscription(UUID driverId) {
-    return subscriptionRepository.existsByDriverIdAndStatusAndExpiresAtAfter(
-        driverId, SubscriptionStatus.ACTIVE, Instant.now());
-}
-```
-
-**Expiry scheduler:**
-```java
-@Scheduled(fixedDelay = 600_000)  // every 10 minutes
-public void expireSubscriptions() { ... }
-```
-
----
-
-### Module: notification
-
-**Purpose:** Push notifications, SMS, in-app, email. Event-driven — no outbound
-REST API called by other modules. Other modules publish Spring events; this module listens.
-Uses provider abstraction for SMS and push — enables per-country provider switching.
-
-**Template resolution:** Resolve by `templateKey + locale` (fall back to `en`).
-
-**SMS provider abstraction:**
-```java
-public interface SmsProvider {
-    String getId();  // "africastalking", "twilio", "beem"
-    void sendSms(String phoneNumber, String message);
-    boolean supportsCountry(String countryCode);
-}
-```
-
-`AfricasTalkingSmsProvider` calls the AT REST API via `RestClient` (no SDK).
-Provider resolution is per-country: `countryConfig.smsProvider` determines which
-implementation handles SMS for that country. Tanzania uses Africa's Talking,
-Kenya could use Twilio or Beem.
+Services call each other's `/internal/**` endpoints directly using Spring `RestClient`.
+Base URLs come from environment variables (Docker Compose service names or K8s DNS).
 
 ```java
 @Component
-public class AfricasTalkingSmsProvider implements SmsProvider {
+public class DriverClient {
     private final RestClient restClient;
 
-    @Override
-    public void sendSms(String phoneNumber, String message) {
-        restClient.post()
-            .uri("/messaging")
-            .body("username=" + username
-                + "&to=" + URLEncoder.encode(phoneNumber, StandardCharsets.UTF_8)
-                + "&message=" + URLEncoder.encode(message, StandardCharsets.UTF_8)
-                + "&from=" + senderId)
+    public DriverClient(@Value("${twende.services.driver-url}") String baseUrl) {
+        this.restClient = RestClient.builder().baseUrl(baseUrl).build();
+    }
+
+    public DriverDto getDriver(UUID driverId) {
+        return restClient.get()
+            .uri("/internal/drivers/{id}", driverId)
             .retrieve()
-            .toBodilessEntity();
-    }
-
-    @Override
-    public boolean supportsCountry(String countryCode) {
-        return Set.of("TZ", "KE", "UG").contains(countryCode);
+            .body(DriverDto.class);
     }
 }
 ```
 
-**Push provider abstraction:**
-```java
-public interface PushProvider {
-    String getId();  // "fcm", "onesignal"
-    void sendNotification(UUID userId, String title, String body, Map<String, String> data);
-    void sendData(UUID userId, Map<String, String> data);
-}
-```
+### Asynchronous: Kafka
 
-`FcmPushProvider` uses Firebase Admin SDK. Other providers (OneSignal, HMS for Huawei)
-can be added without changing notification service logic.
+All significant state changes publish Kafka events. Other services consume them
+independently. See section 8 for the topic registry.
 
-```java
-@Component
-public class FcmPushProvider implements PushProvider {
-    @Override
-    public void sendData(UUID userId, Map<String, String> data) {
-        String token = fcmTokenRepository.findLatestByUserId(userId)
-            .orElseThrow(() -> new ResourceNotFoundException("No FCM token for user"));
-        Message message = Message.builder()
-            .putAllData(data)
-            .setToken(token)
-            .build();
-        FirebaseMessaging.getInstance().send(message);
-    }
-}
-```
+### Real-time: WebSocket
 
-**NotificationService — delegates to providers:**
-```java
-@Service
-public class NotificationService {
-    private final Map<String, SmsProvider> smsProviders;
-    private final Map<String, PushProvider> pushProviders;
-    private final CountryConfigService countryConfigService;
-
-    public void sendSms(String countryCode, String phoneNumber, String message) {
-        if (devMode) { log.info("DEV SMS to {}: {}", phoneNumber, message); return; }
-        CountryConfig config = countryConfigService.getConfig(countryCode);
-        SmsProvider provider = smsProviders.get(config.getSmsProvider().toLowerCase());
-        provider.sendSms(phoneNumber, message);
-    }
-
-    public void sendPush(String countryCode, UUID userId, String title, String body, Map<String, String> data) {
-        CountryConfig config = countryConfigService.getConfig(countryCode);
-        PushProvider provider = pushProviders.get(config.getPushProvider().toLowerCase());
-        provider.sendNotification(userId, title, body, data);
-    }
-}
-```
-
-**Key event listeners:**
-```java
-@EventListener @Async
-public void onTripOtpGenerated(TripStartOtpGeneratedEvent event) {
-    // Send push to rider with OTP code via push provider
-    notificationService.sendPushData(event.getRide().getCountryCode(),
-        event.getRide().getRiderId(), Map.of(
-            "type", "TRIP_OTP",
-            "otp", event.getOtp(),
-            "rideId", event.getRide().getId().toString()
-        ));
-}
-```
-
-**Push data vs notification payload — important distinction:**
-- Use `notification` payload for messages shown when app is in background
-- Use `data` payload for messages the app handles programmatically (OTP display, live updates)
-- For OTP and rejection counter updates: `data` only (app handles rendering)
-- For "driver on the way" etc.: `notification` payload so it shows on lock screen
+`location-service` maintains WebSocket connections for live driver location streaming.
+Endpoint: `ws://host/ws/location?token={jwt}` — JWT validated during handshake.
 
 ---
 
-### Module: loyalty
+## 11. Important Business Rules (Never Override These)
 
-**Purpose:** Rider loyalty programme. Track ride count and mileage per vehicle type.
-Award free ride offers when thresholds are met. Automatically pay drivers for free rides
-from Twende's funds via wallet credit.
-
-**Key entities:**
-- `LoyaltyRule(id UUID, countryCode, vehicleType, requiredRides INT, requiredDistanceKm NUMERIC(10,2), freeRideMaxDistanceKm NUMERIC(10,2), offerValidityDays INT, isActive BOOLEAN)`
-  — Admin-configurable per country + vehicle type. Example: "After 20 Bajaj rides totalling 100+ km, earn a free Bajaj ride up to 5 km, valid for 30 days."
-- `RiderProgress(id UUID, riderId UUID, countryCode, vehicleType, rideCount INT, totalDistanceKm NUMERIC(10,2), lastResetAt TIMESTAMPTZ)`
-  — Running tally per rider per vehicle type. Resets when a free ride offer is earned.
-- `FreeRideOffer(id UUID, riderId UUID, countryCode, vehicleType, maxDistanceKm NUMERIC(10,2), status OfferStatus, earnedAt TIMESTAMPTZ, expiresAt TIMESTAMPTZ, redeemedAt TIMESTAMPTZ, rideId UUID)`
-  — The actual offer. One offer per threshold reached. Can be redeemed on exactly one ride.
-
-**OfferStatus enum:** `AVAILABLE, REDEEMED, EXPIRED`
-
-**Progress tracking (event-driven):**
-```java
-@EventListener @Async
-public void onRideCompleted(RideCompletedEvent event) {
-    Ride ride = event.getRide();
-    if (ride.isFreeRide()) return;  // don't count free rides toward next offer
-
-    RiderProgress progress = progressRepository
-        .findByRiderIdAndCountryCodeAndVehicleType(ride.getRiderId(), ride.getCountryCode(), ride.getVehicleType())
-        .orElseGet(() -> new RiderProgress(ride.getRiderId(), ride.getCountryCode(), ride.getVehicleType()));
-
-    progress.setRideCount(progress.getRideCount() + 1);
-    BigDecimal tripKm = new BigDecimal(ride.getDistanceMetres()).divide(new BigDecimal("1000"), 2, RoundingMode.HALF_UP);
-    progress.setTotalDistanceKm(progress.getTotalDistanceKm().add(tripKm));
-    progressRepository.save(progress);
-
-    // Check if threshold reached
-    LoyaltyRule rule = ruleRepository
-        .findByCountryCodeAndVehicleTypeAndIsActiveTrue(ride.getCountryCode(), ride.getVehicleType())
-        .orElse(null);
-    if (rule != null
-        && progress.getRideCount() >= rule.getRequiredRides()
-        && progress.getTotalDistanceKm().compareTo(rule.getRequiredDistanceKm()) >= 0) {
-        awardFreeRide(progress, rule);
-    }
-}
-
-private void awardFreeRide(RiderProgress progress, LoyaltyRule rule) {
-    FreeRideOffer offer = new FreeRideOffer();
-    offer.setRiderId(progress.getRiderId());
-    offer.setCountryCode(progress.getCountryCode());
-    offer.setVehicleType(progress.getVehicleType());
-    offer.setMaxDistanceKm(rule.getFreeRideMaxDistanceKm());
-    offer.setStatus(OfferStatus.AVAILABLE);
-    offer.setEarnedAt(Instant.now());
-    offer.setExpiresAt(Instant.now().plus(rule.getOfferValidityDays(), ChronoUnit.DAYS));
-    offerRepository.save(offer);
-
-    // Reset progress counters
-    progress.setRideCount(0);
-    progress.setTotalDistanceKm(BigDecimal.ZERO);
-    progress.setLastResetAt(Instant.now());
-    progressRepository.save(progress);
-
-    applicationEventPublisher.publishEvent(new FreeRideOfferEarnedEvent(this, offer));
-    // Notification module sends push to rider
-}
-```
-
-**Free ride redemption (called from RideService during ride creation):**
-```java
-public FreeRideOffer findApplicableOffer(UUID riderId, String countryCode, VehicleType vehicleType, BigDecimal estimatedDistanceKm) {
-    return offerRepository
-        .findFirstByRiderIdAndCountryCodeAndVehicleTypeAndStatusAndExpiresAtAfterOrderByEarnedAtAsc(
-            riderId, countryCode, vehicleType, OfferStatus.AVAILABLE, Instant.now())
-        .filter(offer -> estimatedDistanceKm.compareTo(offer.getMaxDistanceKm()) <= 0)
-        .orElse(null);
-}
-
-@Transactional
-public void redeemOffer(UUID offerId, UUID rideId) {
-    FreeRideOffer offer = offerRepository.findById(offerId).orElseThrow();
-    offer.setStatus(OfferStatus.REDEEMED);
-    offer.setRedeemedAt(Instant.now());
-    offer.setRideId(rideId);
-    offerRepository.save(offer);
-}
-```
-
-**Ride entity integration:** Add `boolean freeRide` and `UUID freeRideOfferId` fields to
-the `Ride` entity. When creating a ride, RideService checks `loyaltyService.findApplicableOffer()`.
-If an offer matches, mark the ride as free and redeem the offer. The rider sees fare = 0.
-On trip completion, `PaymentService` detects `ride.isFreeRide()` and credits the driver wallet
-with the calculated fare amount (Twende absorbs the cost).
-
-**Expiry scheduler:**
-```java
-@Scheduled(fixedDelay = 3_600_000)  // every hour
-public void expireOffers() {
-    List<FreeRideOffer> expired = offerRepository
-        .findByStatusAndExpiresAtBefore(OfferStatus.AVAILABLE, Instant.now());
-    expired.forEach(o -> o.setStatus(OfferStatus.EXPIRED));
-    offerRepository.saveAll(expired);
-}
-```
-
-**Key endpoints:**
-```
-GET    /api/v1/loyalty/progress              Rider's progress per vehicle type
-GET    /api/v1/loyalty/offers                Rider's available free ride offers
-GET    /api/v1/loyalty/rules                 Public — show loyalty rules per country
-PUT    /api/v1/loyalty/rules/{id}            Admin — update loyalty rule thresholds
-```
-
----
-
-### Modules: rating, analytics, compliance
-
-These are simpler event-driven listeners. Build them last.
-
-**Rating:** `POST /api/v1/ratings` — one rating per ride per role. Rider rates driver and vice
-versa. Cache average rating in Redis: `rating:driver:{id}` (TTL 1h).
-
-**Analytics:** `@EventListener @Async` on all significant events. Append to `analytics_events`
-(append-only table). Build materialized summaries with a nightly `@Scheduled` job.
-
-**Compliance:** `@EventListener @Async` on `RideCompletedEvent`. Create `trip_reports` record.
-`@Scheduled` job attempts SUMATRA submission every hour for unsubmitted records.
-Use `ComplianceAdapter` interface with `SumatraAdapter` for Tanzania.
-
----
-
-## 9. Build Phases
-
-Work through these phases in order. Do not start Phase N+1 until Phase N is complete and
-all tests are passing.
-
-**Phase completion rule — applies to EVERY phase:**
-1. Implement all items listed for the phase
-2. Write unit tests and integration tests covering all new code
-3. Run tests: `./mvnw test`
-4. Check coverage: `./mvnw verify` (JaCoCo report at `target/site/jacoco/index.html`)
-5. **Minimum 80% line coverage** on all new code in the phase. If below 80%, write
-   additional tests until the threshold is met. Re-run and confirm all tests pass.
-6. Once all tests pass with ≥80% coverage, create a git commit and push to GitHub:
-   - Commit message format: `feat(phase-N): <short description of what was built>`
-   - Push to remote: `git push origin <branch>`
-7. Only then proceed to the next phase.
-
-### Phase 1 — Foundation (build this first, everything depends on it)
-- [ ] `pom.xml` with all dependencies (including JaCoCo plugin)
-- [ ] `TwendeApplication.java` — `@SpringBootApplication @EnableJpaAuditing @EnableCaching @EnableAsync @EnableScheduling`
-- [ ] `common/entity/BaseEntity.java` + `UlidGenerator.java`
-- [ ] `common/response/ApiResponse.java` and `PagedResponse.java`
-- [ ] `common/exception/` — all exception classes + `GlobalExceptionHandler`
-- [ ] `common/enums/` — all enums
-- [ ] `common/event/TwendeEvent.java` and all event classes
-- [ ] `common/util/PhoneUtil.java`, `CurrencyUtil.java`, `OtpUtil.java`
-- [ ] `config/JpaConfig.java` — `@EnableJpaAuditing`
-- [ ] `config/AsyncConfig.java` — thread pool for `@Async`
-- [ ] `config/RedisConfig.java` — `RedisTemplate<String, Object>` + cache manager
-- [ ] `application.yml` — DB, Redis, actuator, Flyway, logging
-- [ ] `V1__auth_schema.sql` through `V16__seed.sql` — all migrations
-- [ ] Tests, ≥80% coverage, commit & push
-
-### Phase 2 — Security + Country Config
-- [ ] `config/SecurityConfig.java` — full OAuth2 config (both auth server and resource server)
-- [ ] `modules/auth/` — complete auth module with OTP and token issuance
-- [ ] `modules/countryconfig/` — complete with Redis caching + Tanzania seed data
-- [ ] `config/OpenApiConfig.java` — SpringDoc with bearer auth
-- [ ] Tests, ≥80% coverage, commit & push
-
-### Phase 3 — Identity Modules
-- [ ] `modules/user/` — profile creation on `UserRegisteredEvent`, CRUD endpoints
-- [ ] `modules/driver/` — profile, documents, vehicles, go-online validation
-- [ ] Tests, ≥80% coverage, commit & push
-
-### Phase 4 — Ride Flow
-- [ ] `modules/location/` — WebSocket handler, Redis GEO operations, session registry
-- [ ] `modules/location/` — PostGIS extension, zones + geocode_cache tables (V17 migration)
-- [ ] `modules/location/` — Provider interfaces (GeocodingProvider, RoutingProvider, AutocompleteProvider)
-- [ ] `modules/location/` — GoogleMapsClient (RestClient, no SDK) + Google provider implementations
-- [ ] `modules/location/` — GeocodingService (with DB cache), RoutingService, AutocompleteService
-- [ ] `modules/location/` — GeofenceService (PostGIS point-in-polygon zone checks)
-- [ ] `modules/location/` — ZoneController (CRUD, admin), GeocodingController, RoutingController
-- [ ] `modules/location/` — OSRM and Nominatim provider stubs (interface implemented, not wired)
-- [ ] Remove `com.google.maps:google-maps-services` from `pom.xml`
-- [ ] `modules/pricing/` — fare calculation, zone-based adjustments (airport surcharge, zone surge)
-- [ ] `modules/matching/` — broadcast-and-accept, service area validation, expansion scheduler
-- [ ] `modules/ride/` — full lifecycle, fare boost, OTP, rejection counter, cityId on Ride
-- [ ] Tests, ≥80% coverage, commit & push
-
-### Phase 5 — Commerce
-- [ ] `modules/payment/` — Selcom for subscriptions + payouts, wallet management, free ride wallet credit
-- [ ] `modules/subscription/` — plans, purchase via Selcom, expiry scheduler
-- [ ] `modules/loyalty/` — rules, progress tracking, free ride offers, expiry scheduler
-- [ ] Tests, ≥80% coverage, commit & push
-
-### Phase 6 — Supporting Features
-- [ ] `modules/notification/` — FCM, SMS, template system, event listeners
-- [ ] `modules/rating/` — submit and aggregate ratings
-- [ ] Dynamic surge pricing in pricing module (scheduler + Redis)
-- [ ] Tests, ≥80% coverage, commit & push
-
-### Phase 7 — Admin and Observability
-- [ ] `modules/analytics/` — event ingestion, earnings dashboard
-- [ ] `modules/compliance/` — SUMATRA adapter, trip report batch submission
-- [ ] Admin endpoints across all modules (`@PreAuthorize("hasRole('ADMIN')")`)
-- [ ] Prometheus metrics exposed at `/actuator/prometheus`
-- [ ] Zipkin tracing configured
-- [ ] Tests, ≥80% coverage, commit & push
-
----
-
-## 10. Testing Strategy
-
-### Unit tests — for pure logic
-- All `util/` classes
-- `PricingService.calculateFare(...)` — test all edge cases (minimum fare, surge cap)
-- `TripOtpService` — expiry, attempts, single-use
-- `MatchingService.scoreCandidate(...)` — scoring algorithm
-- State machine transitions in `RideService`
-
-### Integration tests — use Testcontainers
-```java
-@SpringBootTest
-@Testcontainers
-class RideFlowIntegrationTest {
-
-    @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
-
-    @Container
-    static GenericContainer<?> redis = new GenericContainer<>("redis:7-alpine").withExposedPorts(6379);
-
-    @DynamicPropertySource
-    static void configureProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", postgres::getJdbcUrl);
-        registry.add("spring.data.redis.host", redis::getHost);
-        registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
-    }
-
-    // Test: create ride, boost fare, simulate accept, verify OTP, complete
-}
-```
-
-### Test naming convention
-```java
-// Given_When_Then pattern
-@Test
-void givenRideInRequestedStatus_whenRiderBoostsFare_thenFareUpdatedAndRebroadcastTriggered() { ... }
-
-@Test
-void givenDriverArrivedStatus_whenDriverEntersCorrectOtp_thenRideMovesToInProgress() { ... }
-
-@Test
-void givenThreeWrongOtpAttempts_whenDriverEntersFourthAttempt_thenNewOtpGeneratedAndSentToRider() { ... }
-```
-
-### Coverage enforcement
-- JaCoCo plugin is configured in `pom.xml` with 80% minimum line coverage
-- `./mvnw verify` runs tests AND enforces coverage — build fails if below 80%
-- Coverage report: `target/site/jacoco/index.html`
-- Excluded from coverage: entities, DTOs, enums, config classes, `TwendeApplication`
-
----
-
-## 11. CI/CD Pipeline
-
-GitHub Actions pipeline at `.github/workflows/ci.yml`. Runs on every push to `main`/`develop`
-and on all pull requests targeting those branches.
-
-### Pipeline stages (in order)
-
-| Stage | What it does | Blocks build? |
-|---|---|---|
-| **Lint & Format** | `spotless:check` — enforces consistent code style (Google Java Format, AOSP) | Yes |
-| **Trivy Dependency Scan** | Filesystem scan of Maven dependencies for CRITICAL/HIGH CVEs + secret detection | Yes |
-| **SAST** | GitHub CodeQL — static analysis for security vulnerabilities (SQL injection, XSS, etc.) | Yes |
-| **Test & Coverage** | `./mvnw verify` with Postgres + Redis services — runs all tests, enforces ≥80% JaCoCo coverage | Yes |
-| **Build** | `./mvnw package` — produces JAR artifact | Yes (needs lint + test) |
-| **Trivy Container Scan** | Builds Docker image, scans with Trivy for CRITICAL/HIGH CVEs in OS packages and runtime | Yes (push only) |
-| **Publish** | Pushes image to GitHub Container Registry (`ghcr.io`) | main branch only |
-| **Deploy** | Placeholder — commented out until dev server is provisioned | — |
-
-### Key design decisions
-- **Trivy as unified security scanner:** one tool for both dependency and container scanning — no API keys, no external DB downloads, fast
-- **Security scanning at 3 levels:** dependencies (Trivy filesystem), source code (CodeQL), container image (Trivy image)
-- **Fail fast:** lint and format run first since they're fastest
-- **Scan results** uploaded to GitHub Security tab (SARIF format) for tracking
-- **Only actionable findings:** `ignore-unfixed: true` suppresses CVEs with no available patch
-- **Artifacts retained:** JaCoCo report (14 days), JAR (7 days)
-- **Container runs as non-root** `twende` user with health checks
-- **No secrets in image:** all config via environment variables at runtime
-
-### Formatting
-Run `./mvnw spotless:apply` to auto-fix formatting before committing.
-The Makefile `format` target does the same: `make format`.
-
-### When deploy is ready
-Uncomment the `deploy-dev` job in `ci.yml` and configure:
-- GitHub Environment `dev` with required reviewers (optional)
-- Secrets: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` (or cloud credentials)
-- Choose deployment method: SSH + Docker Compose, Kubernetes, AWS ECS, or Kamal
-
----
-
-## 12. External Integrations
-
-### SMS (Africa's Talking, Twilio, etc.) — via SmsProvider abstraction
-All SMS sending goes through `SmsProvider` interface in the notification module.
-`CountryConfig.smsProvider` determines which implementation is used per country.
-No third-party SDK — all providers use Spring `RestClient` directly.
-
-See Module: notification specification for `AfricasTalkingSmsProvider` implementation.
-In dev: set `twende.sms.dev-mode=true` to log OTP to console instead of sending.
-
-### Push Notifications (FCM, OneSignal, etc.) — via PushProvider abstraction
-All push notifications go through `PushProvider` interface in the notification module.
-`CountryConfig.pushProvider` determines which implementation is used per country.
-`FcmPushProvider` uses Firebase Admin SDK. Other providers can be added.
-
-See Module: notification specification for `FcmPushProvider` implementation.
-
-Firebase initialization:
-```java
-FirebaseApp.initializeApp(FirebaseOptions.builder()
-    .setCredentials(GoogleCredentials.fromStream(new ByteArrayInputStream(serviceAccountJson.getBytes())))
-    .build());
-```
-
-### Google Maps (geocoding, routing, ETA, autocomplete) — via REST API, no SDK
-All Google Maps calls go through `GoogleMapsClient` in the location module using Spring
-`RestClient`. The `google-maps-services` SDK is NOT used. Other modules (pricing, matching,
-ride) call location module services — never Google directly.
-
-See Module: location specification for `GoogleMapsClient` implementation details.
-
-**Caching:** Geocoding cached in `geocode_cache` DB table (30-day TTL). Distance/directions
-cached in Redis via `@Cacheable` keyed on coordinates rounded to 3dp (1-hour TTL).
-Autocomplete is NOT cached.
-
-### MinIO (document storage)
-```java
-minioClient.uploadObject(UploadObjectArgs.builder()
-    .bucket("twende-driver-documents")
-    .object(driverId + "/" + documentType + "/" + filename)
-    .filename(localPath)
-    .contentType(contentType)
-    .build());
-String url = minioClient.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
-    .method(Method.GET)
-    .bucket("twende-driver-documents")
-    .object(objectName)
-    .expiry(7, TimeUnit.DAYS)
-    .build());
-```
-
-### Selcom Tanzania (mobile money)
-Use the Selcom API. Key endpoints: `push-pay` for driver subscription purchase,
-`disburse` for driver wallet payouts. Always store `providerRef` from response for reconciliation.
-Wrap all Selcom calls in a try-catch with transaction status management:
-```java
-try {
-    SelcomResponse response = selcomClient.charge(request);
-    transaction.setStatus(COMPLETED);
-    transaction.setProviderRef(response.getReference());
-} catch (SelcomException e) {
-    transaction.setStatus(FAILED);
-    transaction.setFailureReason(e.getMessage());
-    // Retry via @Scheduled job for PROCESSING → FAILED upgrades
-}
-```
-
----
-
-## 13. Application Configuration
-
-### application.yml
-```yaml
-server:
-  port: 8080
-
-spring:
-  application:
-    name: twende
-  datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:5432/twende
-    username: ${DB_USER:twende}
-    password: ${DB_PASSWORD:twende}
-    hikari:
-      maximum-pool-size: 20
-      minimum-idle: 5
-  jpa:
-    hibernate:
-      ddl-auto: validate
-    properties:
-      hibernate.dialect: org.hibernate.dialect.PostgreSQLDialect
-  flyway:
-    enabled: true
-    locations: classpath:db/migration
-  data:
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: 6379
-      password: ${REDIS_PASSWORD:}
-  security:
-    oauth2:
-      authorizationserver:
-        issuer-uri: ${AUTH_ISSUER_URI:http://localhost:8080}
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics,prometheus
-  tracing:
-    sampling:
-      probability: 1.0
-
-twende:
-  sms:
-    dev-mode: ${SMS_DEV_MODE:true}
-  maps:
-    google:
-      api-key: ${GOOGLE_MAPS_API_KEY:}
-      enabled: ${GOOGLE_MAPS_ENABLED:true}
-    osrm:
-      base-url: ${OSRM_BASE_URL:http://localhost:5000}
-      enabled: ${OSRM_ENABLED:false}
-    nominatim:
-      base-url: ${NOMINATIM_BASE_URL:http://localhost:8088}
-      enabled: ${NOMINATIM_ENABLED:false}
-  minio:
-    endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
-    access-key: ${MINIO_ACCESS_KEY:twende}
-    secret-key: ${MINIO_SECRET_KEY:twende123}
-  selcom:
-    api-key: ${SELCOM_API_KEY:}
-    api-secret: ${SELCOM_API_SECRET:}
-  firebase:
-    service-account-json: ${FIREBASE_SERVICE_ACCOUNT_JSON:}
-  africastalking:
-    api-key: ${AT_API_KEY:}
-    username: ${AT_USERNAME:sandbox}
-
-logging:
-  level:
-    com.twende: DEBUG
-    org.springframework.security: WARN
-```
-
----
-
-## 14. Important Business Rules (Never Override These)
-
-1. **Driver keeps 100%** — ride fare goes entirely to driver wallet. Twende earns from
-   subscription bundles only. Never deduct a percentage from the ride payment to Twende.
+1. **Driver keeps 100%** — ride fare goes entirely to the driver. Twende earns from
+   subscription bundles only. Never deduct a percentage from ride payment to Twende.
 
 2. **No subscription = no online** — a driver with an expired subscription cannot set
-   status to `ONLINE_AVAILABLE`. Hard block in `DriverService.goOnline()`.
+   status to `ONLINE_AVAILABLE`. Hard block in driver-service.
 
 3. **Fare can only go up** — a rider can boost the fare during `REQUESTED` status but
    cannot reduce it. Once boosted, base fare + boost is the floor.
@@ -1818,11 +655,238 @@ logging:
     Changing a provider for one city must not affect other cities.
 
 19. **Google Maps API key is never exposed to clients** — all mapping API calls are
-    server-side via the location module. Frontend gets results from our endpoints only.
+    server-side via the location-service. Frontend gets results from our endpoints only.
 
 20. **SMS and push provider switching is per-country** — `CountryConfig.smsProvider` and
     `CountryConfig.pushProvider` determine which implementation handles notifications.
     Changing a provider for one country must not affect other countries.
 
-21. **No modules call SMS/push providers directly** — all notification sending goes through
-    `NotificationService` in the notification module. Other modules publish Spring events only.
+21. **No services call SMS/push providers directly** — all notification sending goes through
+    `NotificationService` in notification-service. Other services publish Kafka events only.
+
+---
+
+## 12. Build Phases
+
+Work through these phases in order. Do not start Phase N+1 until Phase N is complete and
+all tests are passing.
+
+**Phase completion rule — applies to EVERY phase:**
+1. Implement all items listed for the phase
+2. Write unit tests and integration tests covering all new code
+3. Run tests: `./mvnw -pl {service} test`
+4. Check coverage: `./mvnw -pl {service} verify` (JaCoCo)
+5. **Minimum 80% line coverage** on all new code. If below 80%, write more tests.
+6. Once all tests pass with >=80% coverage, commit and push.
+
+### Phase 1 — Foundation
+- [ ] `common-lib` — BaseEntity, UlidGenerator, ApiResponse, PagedResponse, all exceptions,
+      GlobalExceptionHandler, all enums, all Kafka event POJOs, all utilities
+- [ ] `api-gateway` — routing config, JWT validation filter, header injection,
+      rate limiting, CORS, WebSocket passthrough
+- [ ] `auth-service` — OTP request/verify, JWT issuance (Spring Authorization Server),
+      token refresh, logout + blocklist, user registration event
+
+### Phase 2 — Core Data
+- [ ] `country-config-service` — country CRUD, vehicle type config, operating cities,
+      payment methods, feature flags, Redis caching, Tanzania seed data
+- [ ] `user-service` — rider profile (created on UserRegisteredEvent), saved places
+- [ ] `driver-service` — driver profile, documents (MinIO upload), vehicles,
+      go-online validation (requires active subscription), status management
+
+### Phase 3 — Ride Flow
+- [ ] `location-service` — WebSocket handler, Redis GEO operations, session registry,
+      PostGIS zones, geocode cache, provider abstraction (Google/OSRM/Nominatim),
+      GoogleMapsClient (RestClient), GeocodingService, RoutingService, GeofenceService
+- [ ] `pricing-service` — fare formula, surge calculation, zone-based adjustments
+      (airport surcharge, zone surge, restricted rejection)
+- [ ] `matching-service` — broadcast-and-accept, driver scoring, expansion scheduler,
+      acceptance race (Redis SETNX), re-broadcast on fare boost, service area validation
+- [ ] `ride-service` — full ride lifecycle, fare boost, trip start OTP, rejection counter,
+      free ride / loyalty integration, ride history
+
+### Phase 4 — Commerce
+- [ ] `payment-service` — Selcom integration, driver wallet, wallet entries,
+      free ride wallet credit on ride completion, withdrawal
+- [ ] `subscription-service` — plans CRUD, purchase via payment-service,
+      expiry scheduler, active subscription check (internal API)
+- [ ] `loyalty-service` — loyalty rules, rider progress tracking,
+      free ride offer creation/redemption/expiry
+
+### Phase 5 — Supporting Features
+- [ ] `notification-service` — FCM push (Firebase Admin SDK), SMS (Africa's Talking
+      RestClient), email (SendGrid), template resolution (i18n), event listeners,
+      provider abstraction (SmsProvider, PushProvider), per-country provider switching
+- [ ] `rating-service` — submit rating, aggregate scores, Redis cache
+
+### Phase 6 — Admin & Observability
+- [ ] `analytics-service` — event ingestion (Kafka), earnings dashboard,
+      trip stats, materialized summaries
+- [ ] `compliance-service` — SUMATRA adapter, trip report generation,
+      batch submission scheduler, audit logging
+- [ ] Admin endpoints across all services (`X-User-Role == ADMIN` check)
+- [ ] Prometheus metrics exposed at `/actuator/prometheus`
+- [ ] Zipkin tracing configured
+
+---
+
+## 13. Testing Strategy
+
+### Unit tests — for pure logic
+- All `util/` classes
+- `PricingService.calculateFare(...)` — test all edge cases
+- OTP generation, expiry, attempts
+- State machine transitions in ride-service
+
+### Integration tests — use Testcontainers
+```java
+@SpringBootTest
+@Testcontainers
+class RideFlowIntegrationTest {
+
+    @Container
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
+
+    @Container
+    static GenericContainer<?> redis = new GenericContainer<>("redis:7-alpine").withExposedPorts(6379);
+
+    @Container
+    static KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.6.0"));
+
+    @DynamicPropertySource
+    static void configureProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", postgres::getJdbcUrl);
+        registry.add("spring.data.redis.host", redis::getHost);
+        registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
+        registry.add("spring.kafka.bootstrap-servers", kafka::getBootstrapServers);
+    }
+}
+```
+
+### Test naming convention
+```java
+@Test
+void givenRideInRequestedStatus_whenRiderBoostsFare_thenFareUpdatedAndRebroadcastTriggered() { ... }
+```
+
+### Coverage enforcement
+- JaCoCo plugin with 80% minimum line coverage
+- `./mvnw -pl {service} verify` fails if below 80%
+- Excluded from coverage: entities, DTOs, enums, config classes, `*Application.class`
+
+---
+
+## 14. CI/CD Pipeline
+
+GitHub Actions at `.github/workflows/ci.yml`. Runs on push to `main`/`develop` and PRs.
+
+| Stage | What | Blocks? |
+|---|---|---|
+| Lint & Format | `spotless:check` (Google Java Format, AOSP) | Yes |
+| Build & Test | `./mvnw clean install` with Postgres + Redis services | Yes |
+| Security Scan | Trivy filesystem + secrets scan | Yes |
+| CodeQL SAST | Static analysis (disabled until source code exists) | Yes |
+| Container Scan | Trivy image scan (push only, planned) | Yes |
+| Publish | Push to GHCR (main branch only, planned) | — |
+
+**Formatting:** Run `./mvnw spotless:apply` or `make format` before committing.
+
+---
+
+## 15. External Integrations
+
+| Integration | Provider | Used by | Pattern |
+|---|---|---|---|
+| Mobile money (TZ) | Selcom API | payment-service | RestClient, no SDK |
+| SMS | Africa's Talking | notification-service | RestClient, no SDK |
+| Push notifications | Firebase (FCM) | notification-service | Firebase Admin SDK |
+| Maps & routing | Google Maps Platform | location-service | RestClient, no SDK |
+| Object storage | MinIO (self-hosted S3) | driver-service | MinIO SDK |
+| Email | SendGrid | notification-service | SendGrid SDK |
+| Geocoding (Phase 3) | Nominatim | location-service | RestClient |
+| Routing (Phase 2) | OSRM | location-service | RestClient |
+| Regulatory (TZ) | SUMATRA | compliance-service | RestClient (adapter pattern) |
+
+---
+
+## 16. Application Configuration Template
+
+Every service follows this standard `application.yml` structure:
+
+```yaml
+server:
+  port: {port}
+
+spring:
+  application:
+    name: {service-name}
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:5432/${DB_NAME:{service_db}}
+    username: ${DB_USER:twende}
+    password: ${DB_PASSWORD:twende}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.dialect: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: 6379
+      password: ${REDIS_PASSWORD:}
+  kafka:
+    bootstrap-servers: ${KAFKA_BROKERS:localhost:9092}
+    consumer:
+      group-id: ${spring.application.name}
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: com.twende.common.events.*
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  tracing:
+    sampling:
+      probability: 1.0
+
+# Inter-service URLs (override via env vars in deployment)
+twende:
+  services:
+    auth-url: ${AUTH_SERVICE_URL:http://localhost:8081}
+    config-url: ${CONFIG_SERVICE_URL:http://localhost:8082}
+    user-url: ${USER_SERVICE_URL:http://localhost:8083}
+    driver-url: ${DRIVER_SERVICE_URL:http://localhost:8084}
+    ride-url: ${RIDE_SERVICE_URL:http://localhost:8085}
+    matching-url: ${MATCHING_SERVICE_URL:http://localhost:8086}
+    location-url: ${LOCATION_SERVICE_URL:http://localhost:8087}
+    pricing-url: ${PRICING_SERVICE_URL:http://localhost:8088}
+    payment-url: ${PAYMENT_SERVICE_URL:http://localhost:8089}
+    subscription-url: ${SUBSCRIPTION_SERVICE_URL:http://localhost:8090}
+    notification-url: ${NOTIFICATION_SERVICE_URL:http://localhost:8091}
+```
+
+---
+
+## 17. Multi-Country Strategy
+
+The `country-config-service` is the single source of truth for all country-specific behaviour.
+Every service that needs country-aware logic fetches its config from country-config-service
+(via REST with Redis caching). When a new country is onboarded:
+
+1. Insert a new `country_config` record (currency, locales, vehicle types, payment aggregator,
+   regulatory authority, feature flags, operating cities).
+2. Flip `status` to `active` in the admin API.
+3. No code changes. No deployments.

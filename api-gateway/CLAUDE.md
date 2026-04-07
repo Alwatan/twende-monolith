@@ -1,0 +1,585 @@
+# CLAUDE.md — Twende API Gateway
+
+> This file is the single source of truth for Claude Code when working on the API Gateway.
+> Read it fully before writing any code. Re-read relevant sections before each task.
+
+---
+
+## 1. Overview
+
+The API Gateway is the single entry point for all external traffic into the Twende platform.
+Built on **Spring Cloud Gateway** (reactive / WebFlux). It handles:
+
+- Request routing to downstream services
+- JWT validation (fetches JWKS from auth-service, validates token signatures)
+- Header injection: `X-User-Id`, `X-User-Role`, `X-Country-Code` (extracted from JWT claims)
+- Rate limiting (per-IP and per-user, using Redis)
+- CORS policy for client apps
+- Request/response logging
+- Circuit breaking (Resilience4j)
+
+**Port:** 8080
+**No database** — fully stateless. Uses Redis only for rate limiting counters.
+
+---
+
+## 2. Critical Constraints
+
+**These are non-negotiable. Never deviate.**
+
+1. **Does NOT depend on common-lib.** Spring Cloud Gateway is WebFlux-based. The common-lib
+   uses WebMvc (Spring MVC). Mixing them causes startup failures. If you need a shared class
+   (e.g., an enum, a DTO), duplicate it locally in this module rather than adding a common-lib
+   dependency.
+
+2. **No Eureka, no Config Server, no Feign.** Service discovery is not used. Routes point to
+   downstream services via direct URLs configured through environment variables (e.g.,
+   `${AUTH_SERVICE_URL:http://localhost:8081}`). No `spring-cloud-starter-netflix-eureka-client`
+   in `pom.xml`.
+
+3. **No database dependency.** No JPA, no Flyway, no Hibernate. This service is stateless.
+
+4. **WebSocket routes (`/ws/**`) bypass the AuthFilter.** Authentication for WebSocket
+   connections is handled during the WS handshake inside the location-service via a query
+   parameter token (`?token=eyJ...`).
+
+5. **`/internal/**` routes must NOT be exposed externally.** Any route matching `/internal/**`
+   must be blocked at the gateway level. Internal service-to-service calls go directly between
+   services, not through the gateway.
+
+6. **Health checks are public.** `/actuator/health` is not behind the AuthFilter. It must be
+   accessible for container orchestration liveness/readiness probes.
+
+7. **Downstream services trust gateway headers.** Services do NOT re-validate JWTs. They read
+   `X-User-Id`, `X-User-Role`, and `X-Country-Code` headers injected by the gateway's
+   AuthFilter. The gateway is the sole JWT validator.
+
+---
+
+## 3. Technology Stack
+
+| Technology | Purpose |
+|---|---|
+| Spring Cloud Gateway | Reactive request routing (WebFlux-based) |
+| Spring OAuth2 Resource Server | JWT decoding via JWKS endpoint |
+| Spring Data Redis Reactive | Rate limiting counters |
+| Resilience4j (reactor) | Circuit breaking for downstream services |
+| Micrometer + Prometheus | Metrics at `/actuator/prometheus` |
+| Lombok | Boilerplate reduction |
+
+---
+
+## 4. Package Structure
+
+```
+com.twende.gateway
+├── GatewayApplication.java
+├── config/
+│   ├── GatewayConfig.java           # Route definitions (Java DSL or YAML supplement)
+│   ├── CorsConfig.java              # CORS WebFilter bean
+│   ├── RedisConfig.java             # Reactive Redis template for rate limiting
+│   ├── SecurityConfig.java          # OAuth2 resource server + JWKS config
+│   └── Resilience4jConfig.java      # Circuit breaker and time limiter defaults
+├── filter/
+│   ├── AuthFilter.java              # JWT validation + header injection (X-User-Id, X-User-Role, X-Country-Code)
+│   ├── RoleFilter.java              # Role-based access control (checks X-User-Role)
+│   ├── RequestLoggingFilter.java    # Global filter: logs method + path + userId + duration
+│   └── InternalRouteBlockFilter.java # Blocks /internal/** from external access
+└── resolver/
+    ├── IpKeyResolver.java           # Rate limit key: client IP address
+    └── UserKeyResolver.java         # Rate limit key: X-User-Id header (falls back to "anonymous")
+```
+
+---
+
+## 5. Routing Configuration
+
+Routes are defined in `application.yml`. All service URIs use direct URLs resolved from
+environment variables. **No `lb://` scheme** (no Eureka).
+
+### Route Table
+
+| Route ID | Path | Target | Auth | Rate Limit |
+|---|---|---|---|---|
+| auth-service | `/api/v1/auth/**`, `/oauth2/**` | `${AUTH_SERVICE_URL}` | None (public) | 10 req/s per IP |
+| country-config-read | `/api/v1/config/**` GET | `${COUNTRY_CONFIG_SERVICE_URL}` | None (public) | 10 req/s per IP |
+| country-config-write | `/api/v1/config/**` POST/PUT/PATCH/DELETE | `${COUNTRY_CONFIG_SERVICE_URL}` | AuthFilter + RoleFilter=ADMIN | 30 req/s per user |
+| user-service | `/api/v1/users/**` | `${USER_SERVICE_URL}` | AuthFilter | 30 req/s per user |
+| driver-service | `/api/v1/drivers/**` | `${DRIVER_SERVICE_URL}` | AuthFilter | 30 req/s per user |
+| ride-service | `/api/v1/rides/**` | `${RIDE_SERVICE_URL}` | AuthFilter | 30 req/s per user |
+| location-service | `/api/v1/locations/**` | `${LOCATION_SERVICE_URL}` | AuthFilter | 30 req/s per user |
+| location-ws | `/ws/**` | `${LOCATION_SERVICE_URL}` | None (WS handshake auth) | None |
+| pricing-service | `/api/v1/pricing/**` | `${PRICING_SERVICE_URL}` | AuthFilter | 30 req/s per user |
+| payment-service | `/api/v1/payments/**` | `${PAYMENT_SERVICE_URL}` | AuthFilter | 30 req/s per user |
+| subscription-service | `/api/v1/subscriptions/**` | `${SUBSCRIPTION_SERVICE_URL}` | AuthFilter | 30 req/s per user |
+| notification-service | `/api/v1/notifications/**` | `${NOTIFICATION_SERVICE_URL}` | AuthFilter | 30 req/s per user |
+| loyalty-service | `/api/v1/loyalty/**` | `${LOYALTY_SERVICE_URL}` | AuthFilter | 30 req/s per user |
+| rating-service | `/api/v1/ratings/**` | `${RATING_SERVICE_URL}` | AuthFilter | 30 req/s per user |
+| matching-service | `/api/v1/matching/**` | `${MATCHING_SERVICE_URL}` | AuthFilter | 30 req/s per user |
+| analytics-service | `/api/v1/analytics/**` | `${ANALYTICS_SERVICE_URL}` | AuthFilter + RoleFilter=DRIVER,ADMIN | 30 req/s per user |
+| compliance-service | `/api/v1/compliance/**` | `${COMPLIANCE_SERVICE_URL}` | AuthFilter + RoleFilter=ADMIN | 30 req/s per user |
+
+### Blocked Routes
+
+```yaml
+# /internal/** must never be routable from outside
+- id: block-internal
+  predicates:
+    - Path=/internal/**
+  filters:
+    - SetStatus=404
+```
+
+---
+
+## 6. Custom Filters
+
+### AuthFilter
+
+Validates the Bearer JWT on every protected route. On success, injects three headers into
+the downstream request. On failure, returns 401 immediately.
+
+```java
+@Component
+public class AuthFilter implements GatewayFilter, Ordered {
+
+    private final ReactiveJwtDecoder jwtDecoder;
+
+    @Override
+    public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+        String authHeader = exchange.getRequest().getHeaders()
+            .getFirst(HttpHeaders.AUTHORIZATION);
+
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
+            return exchange.getResponse().setComplete();
+        }
+
+        String token = authHeader.substring(7);
+        return jwtDecoder.decode(token)
+            .flatMap(jwt -> {
+                ServerWebExchange mutated = exchange.mutate()
+                    .request(r -> r
+                        .header("X-User-Id", jwt.getSubject())
+                        .header("X-User-Role", jwt.getClaimAsString("roles"))
+                        .header("X-Country-Code", jwt.getClaimAsString("countryCode")))
+                    .build();
+                return chain.filter(mutated);
+            })
+            .onErrorResume(e -> {
+                exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
+                return exchange.getResponse().setComplete();
+            });
+    }
+
+    @Override
+    public int getOrder() { return -100; }  // runs before other filters
+}
+```
+
+**Injected headers (downstream services read these):**
+
+| Header | JWT Claim | Description |
+|---|---|---|
+| `X-User-Id` | `sub` | User UUID (ULID-generated) |
+| `X-User-Role` | `roles` | Role string: `RIDER`, `DRIVER`, or `ADMIN` |
+| `X-Country-Code` | `countryCode` | ISO 3166-1 alpha-2 (e.g., `TZ`) |
+
+### RoleFilter
+
+A `GatewayFilterFactory` that checks the `X-User-Role` header (set by AuthFilter) against a
+list of permitted roles. Returns 403 Forbidden if the role is not in the allowed list.
+
+```java
+@Component
+public class RoleFilter implements GatewayFilterFactory<RoleFilter.Config> {
+
+    @Override
+    public GatewayFilter apply(Config config) {
+        return (exchange, chain) -> {
+            String role = exchange.getRequest().getHeaders().getFirst("X-User-Role");
+            if (role == null || !config.getRoles().contains(role)) {
+                exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
+                return exchange.getResponse().setComplete();
+            }
+            return chain.filter(exchange);
+        };
+    }
+
+    @Data
+    public static class Config {
+        private List<String> roles;  // e.g., ["DRIVER", "ADMIN"]
+    }
+}
+```
+
+**Usage in route config:** `RoleFilter=DRIVER,ADMIN`
+
+AuthFilter must run before RoleFilter (AuthFilter order = -100, RoleFilter uses default order).
+
+### RequestLoggingFilter
+
+A global filter applied to every request. Logs: HTTP method, path, userId (from
+`X-User-Id` header if present), response status, and request duration in milliseconds.
+
+Implement as a `GlobalFilter` so it applies automatically without per-route configuration.
+
+### InternalRouteBlockFilter
+
+Blocks any request to `/internal/**` with a 404 response. Prevents external callers from
+reaching internal service-to-service endpoints that should only be called directly between
+services.
+
+---
+
+## 7. Rate Limiting
+
+Uses Spring Cloud Gateway's built-in `RequestRateLimiter` filter backed by Redis.
+
+### Key Resolvers
+
+```java
+@Bean
+public KeyResolver ipKeyResolver() {
+    return exchange -> Mono.just(
+        exchange.getRequest().getRemoteAddress().getAddress().getHostAddress()
+    );
+}
+
+@Bean
+public KeyResolver userKeyResolver() {
+    return exchange -> Mono.justOrEmpty(
+        exchange.getRequest().getHeaders().getFirst("X-User-Id")
+    ).defaultIfEmpty("anonymous");
+}
+```
+
+### Default Limits
+
+| Scope | Replenish Rate | Burst Capacity | Key Resolver |
+|---|---|---|---|
+| Public routes (auth, config GET, OTP) | 10 req/s | 20 | `ipKeyResolver` |
+| Authenticated routes | 30 req/s | 60 | `userKeyResolver` |
+| Admin routes | 100 req/s | 200 | `userKeyResolver` |
+
+When rate limited, the gateway returns **429 Too Many Requests** with standard
+`X-RateLimit-Remaining` and `X-RateLimit-Burst-Capacity` headers.
+
+---
+
+## 8. CORS Configuration
+
+```java
+@Bean
+public CorsWebFilter corsWebFilter() {
+    CorsConfiguration config = new CorsConfiguration();
+    config.setAllowedOrigins(List.of(
+        "https://admin.twende.app",
+        "https://app.twende.app",
+        "http://localhost:3000"    // local development
+    ));
+    config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
+    config.setAllowedHeaders(List.of("*"));
+    config.setExposedHeaders(List.of("X-RateLimit-Remaining", "X-RateLimit-Burst-Capacity"));
+    config.setAllowCredentials(true);
+    config.setMaxAge(3600L);
+
+    UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+    source.registerCorsConfiguration("/**", config);
+    return new CorsWebFilter(source);
+}
+```
+
+**Rules:**
+- Only allow origins that are known Twende clients
+- `allowCredentials: true` is required for cookie-based refresh tokens
+- `OPTIONS` preflight requests must be handled (they are, by default, with this config)
+- Add new origins via environment variable if needed: `${CORS_ALLOWED_ORIGINS}`
+
+---
+
+## 9. Circuit Breaking
+
+All downstream routes use Resilience4j circuit breakers. When a service fails repeatedly,
+the circuit opens and returns a fallback response rather than timing out callers.
+
+```yaml
+resilience4j:
+  circuitbreaker:
+    instances:
+      default:
+        slidingWindowSize: 10
+        failureRateThreshold: 50        # open circuit after 50% failures
+        waitDurationInOpenState: 10s     # stay open for 10s before half-open
+        permittedNumberOfCallsInHalfOpenState: 3
+  timelimiter:
+    instances:
+      default:
+        timeoutDuration: 5s             # max 5s per downstream call
+```
+
+When the circuit is open, return HTTP 503 Service Unavailable with a JSON body:
+```json
+{
+  "success": false,
+  "message": "Service temporarily unavailable. Please try again shortly.",
+  "data": null
+}
+```
+
+---
+
+## 10. Application Configuration
+
+```yaml
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  main:
+    web-application-type: reactive
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${AUTH_SERVICE_URL:http://localhost:8081}/oauth2/jwks
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+  cloud:
+    gateway:
+      default-filters:
+        - name: CircuitBreaker
+          args:
+            name: default
+            fallbackUri: forward:/fallback
+      routes:
+        - id: auth-service
+          uri: ${AUTH_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/api/v1/auth/**, /oauth2/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 10
+                redis-rate-limiter.burstCapacity: 20
+                key-resolver: "#{@ipKeyResolver}"
+
+        - id: user-service
+          uri: ${USER_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/v1/users/**
+          filters:
+            - AuthFilter
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 30
+                redis-rate-limiter.burstCapacity: 60
+                key-resolver: "#{@userKeyResolver}"
+
+        - id: driver-service
+          uri: ${DRIVER_SERVICE_URL:http://localhost:8083}
+          predicates:
+            - Path=/api/v1/drivers/**
+          filters:
+            - AuthFilter
+
+        - id: ride-service
+          uri: ${RIDE_SERVICE_URL:http://localhost:8084}
+          predicates:
+            - Path=/api/v1/rides/**
+          filters:
+            - AuthFilter
+
+        - id: location-service
+          uri: ${LOCATION_SERVICE_URL:http://localhost:8085}
+          predicates:
+            - Path=/api/v1/locations/**
+          filters:
+            - AuthFilter
+
+        - id: location-ws
+          uri: ${LOCATION_SERVICE_WS_URL:ws://localhost:8085}
+          predicates:
+            - Path=/ws/**
+          # No AuthFilter — WS auth on handshake via ?token= query param
+
+        - id: pricing-service
+          uri: ${PRICING_SERVICE_URL:http://localhost:8086}
+          predicates:
+            - Path=/api/v1/pricing/**
+          filters:
+            - AuthFilter
+
+        - id: payment-service
+          uri: ${PAYMENT_SERVICE_URL:http://localhost:8087}
+          predicates:
+            - Path=/api/v1/payments/**
+          filters:
+            - AuthFilter
+
+        - id: subscription-service
+          uri: ${SUBSCRIPTION_SERVICE_URL:http://localhost:8088}
+          predicates:
+            - Path=/api/v1/subscriptions/**
+          filters:
+            - AuthFilter
+
+        - id: notification-service
+          uri: ${NOTIFICATION_SERVICE_URL:http://localhost:8089}
+          predicates:
+            - Path=/api/v1/notifications/**
+          filters:
+            - AuthFilter
+
+        - id: loyalty-service
+          uri: ${LOYALTY_SERVICE_URL:http://localhost:8090}
+          predicates:
+            - Path=/api/v1/loyalty/**
+          filters:
+            - AuthFilter
+
+        - id: rating-service
+          uri: ${RATING_SERVICE_URL:http://localhost:8091}
+          predicates:
+            - Path=/api/v1/ratings/**
+          filters:
+            - AuthFilter
+
+        - id: matching-service
+          uri: ${MATCHING_SERVICE_URL:http://localhost:8092}
+          predicates:
+            - Path=/api/v1/matching/**
+          filters:
+            - AuthFilter
+
+        - id: analytics-service
+          uri: ${ANALYTICS_SERVICE_URL:http://localhost:8093}
+          predicates:
+            - Path=/api/v1/analytics/**
+          filters:
+            - AuthFilter
+            - RoleFilter=DRIVER,ADMIN
+
+        - id: compliance-service
+          uri: ${COMPLIANCE_SERVICE_URL:http://localhost:8094}
+          predicates:
+            - Path=/api/v1/compliance/**
+          filters:
+            - AuthFilter
+            - RoleFilter=ADMIN
+
+        - id: country-config-service
+          uri: ${COUNTRY_CONFIG_SERVICE_URL:http://localhost:8095}
+          predicates:
+            - Path=/api/v1/config/**
+          # Public for GET; admin protection handled inside the service
+
+        - id: block-internal
+          uri: no://op
+          predicates:
+            - Path=/internal/**
+          filters:
+            - SetStatus=404
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      default:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 3
+  timelimiter:
+    instances:
+      default:
+        timeoutDuration: 5s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  level:
+    com.twende.gateway: DEBUG
+    org.springframework.cloud.gateway: INFO
+    org.springframework.security: WARN
+```
+
+---
+
+## 11. Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `AUTH_SERVICE_URL` | `http://localhost:8081` | Auth service base URL (JWKS + routes) |
+| `USER_SERVICE_URL` | `http://localhost:8082` | User service |
+| `DRIVER_SERVICE_URL` | `http://localhost:8083` | Driver service |
+| `RIDE_SERVICE_URL` | `http://localhost:8084` | Ride service |
+| `LOCATION_SERVICE_URL` | `http://localhost:8085` | Location service (HTTP) |
+| `LOCATION_SERVICE_WS_URL` | `ws://localhost:8085` | Location service (WebSocket) |
+| `PRICING_SERVICE_URL` | `http://localhost:8086` | Pricing service |
+| `PAYMENT_SERVICE_URL` | `http://localhost:8087` | Payment service |
+| `SUBSCRIPTION_SERVICE_URL` | `http://localhost:8088` | Subscription service |
+| `NOTIFICATION_SERVICE_URL` | `http://localhost:8089` | Notification service |
+| `LOYALTY_SERVICE_URL` | `http://localhost:8090` | Loyalty service |
+| `RATING_SERVICE_URL` | `http://localhost:8091` | Rating service |
+| `MATCHING_SERVICE_URL` | `http://localhost:8092` | Matching service |
+| `ANALYTICS_SERVICE_URL` | `http://localhost:8093` | Analytics service |
+| `COMPLIANCE_SERVICE_URL` | `http://localhost:8094` | Compliance service |
+| `COUNTRY_CONFIG_SERVICE_URL` | `http://localhost:8095` | Country config service |
+| `REDIS_HOST` | `localhost` | Redis host for rate limiting |
+| `REDIS_PORT` | `6379` | Redis port |
+| `REDIS_PASSWORD` | (empty) | Redis password |
+| `CORS_ALLOWED_ORIGINS` | (see CorsConfig) | Comma-separated allowed origins |
+
+---
+
+## 12. Important Notes
+
+### WebSocket Routing
+Location service WebSocket connections (`/ws/**`) are routed without the AuthFilter. The
+location-service handles authentication during the WS handshake via a query parameter token
+(`?token=eyJ...`). The gateway only forwards the connection.
+
+### Health Checks
+`/actuator/health` is public (no AuthFilter). Used by Kubernetes liveness/readiness probes
+and load balancer health checks. Do not put it behind authentication.
+
+### Internal Traffic
+Service-to-service calls go directly between services, NOT through the gateway. The gateway
+is for external (client-facing) traffic only. The `/internal/**` route block ensures that
+internal endpoints are never accidentally exposed.
+
+### Header Trust Model
+Downstream services trust the `X-User-Id`, `X-User-Role`, and `X-Country-Code` headers
+set by the AuthFilter. They do NOT re-validate JWTs. This means:
+- External clients sending fake `X-User-*` headers are harmless because AuthFilter
+  overwrites them with values from the validated JWT.
+- Services must never be exposed directly to the internet. All external traffic must
+  flow through the gateway.
+
+### No common-lib Dependency
+This module is WebFlux-based. The `common-lib` module uses Spring MVC (`spring-boot-starter-web`).
+Mixing reactive and servlet stacks causes `BeanCreationException` at startup. If you need a
+shared type (enum, DTO, constant), copy it into this module under `com.twende.gateway.shared/`.
+Do not add `common-lib` to `pom.xml`.
+
+### Testing
+- Use `@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)` with
+  `WebTestClient` (not `MockMvc` -- this is a WebFlux application).
+- Mock downstream services with `WireMock` or `MockWebServer`.
+- Test AuthFilter with valid/invalid/expired JWTs using a test RSA key pair.
+- Test rate limiting with a real Redis instance via Testcontainers.
+
+### Formatting
+Run `./mvnw spotless:apply` from the `api-gateway/` directory before committing.
