@@ -1,11 +1,23 @@
 # Stage 1: Build
 FROM eclipse-temurin:21-jdk-alpine AS build
+RUN apk add --no-cache curl
 WORKDIR /workspace
+
 COPY pom.xml .
 COPY common-lib common-lib
 COPY subscription-service subscription-service
+
+RUN for mod in api-gateway auth-service country-config-service user-service driver-service \
+    location-service pricing-service matching-service ride-service payment-service \
+    notification-service loyalty-service rating-service \
+    analytics-service compliance-service; do \
+    mkdir -p "$mod"; \
+    echo '<project><modelVersion>4.0.0</modelVersion><parent><groupId>tz.co.twende</groupId><artifactId>twende-parent</artifactId><version>1.0.0-SNAPSHOT</version></parent><artifactId>'"$mod"'</artifactId></project>' > "$mod/pom.xml"; \
+    done
+
 COPY mvnw .
 RUN chmod +x mvnw \
+    && ./mvnw -N install -DskipTests -q \
     && ./mvnw -pl common-lib install -DskipTests -q \
     && ./mvnw -pl subscription-service package -DskipTests -q
 
