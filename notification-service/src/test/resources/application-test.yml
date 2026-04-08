@@ -1,0 +1,41 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+  flyway:
+    enabled: false
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: notification-service-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "tz.co.twende.*"
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+twende:
+  sms:
+    dev-mode: true
+  push:
+    dev-mode: true
+  services:
+    country-config-service:
+      url: http://localhost:9999
+  firebase:
+    service-account-json: ""
+  africastalking:
+    api-key: test-key
+    username: sandbox
+    sender-id: TWENDE
+    base-url: http://localhost:9999
+  sendgrid:
+    api-key: ""
+    from-email: noreply@twende.co.tz
+
+logging:
+  level:
+    tz.co.twende: DEBUG

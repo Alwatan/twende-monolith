@@ -184,6 +184,8 @@ jobs:
           - payment-service
           - subscription-service
           - loyalty-service
+          - notification-service
+          - rating-service
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3

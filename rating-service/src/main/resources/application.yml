@@ -1,0 +1,56 @@
+server:
+  port: 8092
+
+spring:
+  application:
+    name: twende-rating
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:5432/twende_ratings
+    username: ${DB_USER:twende}
+    password: ${DB_PASSWORD:twende}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 3
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.dialect: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: twende-rating
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "tz.co.twende.*"
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  tracing:
+    sampling:
+      probability: 1.0
+
+twende:
+  services:
+    ride-url: ${RIDE_SERVICE_URL:http://localhost:8085}
+
+logging:
+  level:
+    tz.co.twende: DEBUG
+    org.springframework.kafka: WARN

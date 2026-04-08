@@ -844,9 +844,9 @@ to build each service, refer to the **"Implementation Steps"** section in that s
 - [x] `subscription-service` — see `subscription-service/CLAUDE.md` → Implementation Steps
 - [x] `loyalty-service` — see `loyalty-service/CLAUDE.md` → Implementation Steps
 
-### Phase 5 — Supporting Features
-- [ ] `notification-service` — see `notification-service/CLAUDE.md` → Implementation Steps
-- [ ] `rating-service` — see `rating-service/CLAUDE.md` → Implementation Steps
+### Phase 5 — Supporting Features ✅
+- [x] `notification-service` — see `notification-service/CLAUDE.md` → Implementation Steps
+- [x] `rating-service` — see `rating-service/CLAUDE.md` → Implementation Steps
 
 ### Phase 6 — Admin & Observability
 - [ ] `analytics-service` — see `analytics-service/CLAUDE.md` → Implementation Steps
