@@ -839,10 +839,10 @@ to build each service, refer to the **"Implementation Steps"** section in that s
 - [x] `ride-service` (enhancement) — internal endpoint `GET /internal/rides/history`
       for user-service to fetch recent rides by userId + cityId.
 
-### Phase 4 — Commerce
-- [ ] `payment-service` — see `payment-service/CLAUDE.md` → Implementation Steps
-- [ ] `subscription-service` — see `subscription-service/CLAUDE.md` → Implementation Steps
-- [ ] `loyalty-service` — see `loyalty-service/CLAUDE.md` → Implementation Steps
+### Phase 4 — Commerce ✅
+- [x] `payment-service` — see `payment-service/CLAUDE.md` → Implementation Steps
+- [x] `subscription-service` — see `subscription-service/CLAUDE.md` → Implementation Steps
+- [x] `loyalty-service` — see `loyalty-service/CLAUDE.md` → Implementation Steps
 
 ### Phase 5 — Supporting Features
 - [ ] `notification-service` — see `notification-service/CLAUDE.md` → Implementation Steps

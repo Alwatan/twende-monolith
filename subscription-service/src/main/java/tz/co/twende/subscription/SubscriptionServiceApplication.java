@@ -1,0 +1,15 @@
+package tz.co.twende.subscription;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
+import org.springframework.scheduling.annotation.EnableScheduling;
+
+@SpringBootApplication(scanBasePackages = {"tz.co.twende.subscription", "tz.co.twende.common"})
+@EnableJpaAuditing
+@EnableScheduling
+public class SubscriptionServiceApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(SubscriptionServiceApplication.class, args);
+    }
+}

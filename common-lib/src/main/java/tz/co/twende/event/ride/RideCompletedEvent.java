@@ -14,6 +14,7 @@ public class RideCompletedEvent extends KafkaEvent {
     private UUID rideId;
     private UUID riderId;
     private UUID driverId;
+    private String vehicleType;
     private BigDecimal finalFare;
     private Integer distanceMetres;
     private Integer durationSeconds;

@@ -6,19 +6,22 @@
 CREATE TABLE subscription_plans (
     id             UUID          PRIMARY KEY,
     country_code   CHAR(2)       NOT NULL,
+    vehicle_type   VARCHAR(30)   NOT NULL,
     plan_type      VARCHAR(10)   NOT NULL,
     price          NUMERIC(10,2) NOT NULL,
     currency_code  VARCHAR(3)    NOT NULL,
     duration_hours INT           NOT NULL,
     is_active      BOOLEAN       NOT NULL DEFAULT TRUE,
     display_name   VARCHAR(100),
-    created_at     TIMESTAMPTZ   NOT NULL DEFAULT now()
+    created_at     TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    UNIQUE(country_code, vehicle_type, plan_type)
 );
 
 CREATE INDEX idx_plans_country ON subscription_plans(country_code, is_active);
 
 -- -----------------------------------------------------------------------------
--- subscriptions — one active subscription per driver at a time
+-- subscriptions -- one active subscription per driver at a time
 -- -----------------------------------------------------------------------------
 CREATE TABLE subscriptions (
     id             UUID          PRIMARY KEY,
@@ -31,7 +34,8 @@ CREATE TABLE subscriptions (
     started_at     TIMESTAMPTZ,
     expires_at     TIMESTAMPTZ,
     payment_ref    UUID,
-    created_at     TIMESTAMPTZ   NOT NULL DEFAULT now()
+    created_at     TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ   NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_sub_driver  ON subscriptions(driver_id, status);
