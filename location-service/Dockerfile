@@ -1,20 +1,25 @@
 # Stage 1: Build
 FROM eclipse-temurin:21-jdk-alpine AS build
+RUN apk add --no-cache curl
 WORKDIR /workspace
+
+# Copy parent pom, common-lib (real dependency), and location-service
 COPY pom.xml .
-COPY .mvn .mvn
-COPY mvnw .
 COPY common-lib common-lib
 COPY location-service location-service
 
-# Create stub POMs for sibling modules referenced by parent
-RUN for dir in api-gateway auth-service country-config-service user-service driver-service \
-    ride-service matching-service pricing-service payment-service subscription-service \
-    notification-service loyalty-service rating-service analytics-service compliance-service; do \
-    mkdir -p $dir && echo '<project><modelVersion>4.0.0</modelVersion><parent><groupId>tz.co.twende</groupId><artifactId>twende-parent</artifactId><version>1.0.0-SNAPSHOT</version></parent><artifactId>'$dir'</artifactId></project>' > $dir/pom.xml; \
+# Create minimal pom stubs for sibling modules referenced in parent pom
+RUN for mod in api-gateway auth-service country-config-service user-service driver-service \
+    ride-service matching-service pricing-service payment-service \
+    subscription-service notification-service loyalty-service rating-service \
+    analytics-service compliance-service; do \
+    mkdir -p "$mod"; \
+    echo '<project><modelVersion>4.0.0</modelVersion><parent><groupId>tz.co.twende</groupId><artifactId>twende-parent</artifactId><version>1.0.0-SNAPSHOT</version></parent><artifactId>'"$mod"'</artifactId></project>' > "$mod/pom.xml"; \
     done
 
+COPY mvnw .
 RUN chmod +x mvnw \
+    && ./mvnw -N install -DskipTests -q \
     && ./mvnw -pl common-lib install -DskipTests -q \
     && ./mvnw -pl location-service package -DskipTests -q
 
