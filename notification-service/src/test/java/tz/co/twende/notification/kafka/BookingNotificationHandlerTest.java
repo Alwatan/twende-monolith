@@ -52,11 +52,12 @@ class BookingNotificationHandlerTest {
     }
 
     @Test
-    void givenBookingCompletedEvent_whenProcessed_thenPushSentToCustomer() {
+    void givenCharterBookingCompletedEvent_whenProcessed_thenPushSentToCustomer() {
         BookingCompletedEvent event = new BookingCompletedEvent();
         event.setBookingId(UUID.randomUUID());
         event.setRiderId(UUID.randomUUID());
         event.setDriverId(UUID.randomUUID());
+        event.setServiceCategory("CHARTER");
         event.setFinalFare(new BigDecimal("52000"));
         event.setCountryCode("TZ");
 
@@ -73,6 +74,58 @@ class BookingNotificationHandlerTest {
                         anyString(),
                         any(),
                         eq("charter.completed"));
+    }
+
+    @Test
+    void givenCargoBookingRequestedEvent_whenProcessed_thenCargoTemplateSent() {
+        BookingRequestedEvent event = new BookingRequestedEvent();
+        event.setBookingId(UUID.randomUUID());
+        event.setRiderId(UUID.randomUUID());
+        event.setServiceCategory("CARGO");
+        event.setVehicleType("TRUCK_LIGHT");
+        event.setWeightTier("FULL");
+        event.setScheduledPickupAt(Instant.now().plus(1, ChronoUnit.DAYS));
+        event.setEstimatedFare(new BigDecimal("25000"));
+        event.setCountryCode("TZ");
+
+        when(templateResolver.resolveTemplate(eq("cargo.confirmed"), eq("sw-TZ"), any()))
+                .thenReturn("Usafiri wako wa mizigo umethibitishwa kwa TRUCK_LIGHT.");
+
+        handler.handleBookingRequested(event);
+
+        verify(notificationService)
+                .sendPush(
+                        eq("TZ"),
+                        eq(event.getRiderId()),
+                        eq("Cargo Booking Confirmed"),
+                        anyString(),
+                        any(),
+                        eq("cargo.confirmed"));
+    }
+
+    @Test
+    void givenCargoBookingCompletedEvent_whenProcessed_thenCargoCompletedTemplateSent() {
+        BookingCompletedEvent event = new BookingCompletedEvent();
+        event.setBookingId(UUID.randomUUID());
+        event.setRiderId(UUID.randomUUID());
+        event.setDriverId(UUID.randomUUID());
+        event.setServiceCategory("CARGO");
+        event.setFinalFare(new BigDecimal("25000"));
+        event.setCountryCode("TZ");
+
+        when(templateResolver.resolveTemplate(eq("cargo.completed"), eq("sw-TZ"), any()))
+                .thenReturn("Mizigo yako imefika salama. Umelipa TSh 25000.");
+
+        handler.handleBookingCompleted(event);
+
+        verify(notificationService)
+                .sendPush(
+                        eq("TZ"),
+                        eq(event.getRiderId()),
+                        eq("Cargo Delivered"),
+                        anyString(),
+                        any(),
+                        eq("cargo.completed"));
     }
 
     @Test

@@ -274,9 +274,10 @@ class RideServiceIntegrationTest {
                         + " dropoff_address, estimated_fare, fare_boost_amount, currency_code,"
                         + " free_ride, driver_rejection_count, trip_start_otp_attempts,"
                         + " service_category, booking_type, payment_timing,"
+                        + " driver_provides_loading,"
                         + " requested_at, created_at, updated_at)"
                         + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
-                        + " now(), now(), now())",
+                        + " false, now(), now(), now())",
                 rideId,
                 countryCode,
                 riderId,

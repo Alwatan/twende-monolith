@@ -23,4 +23,9 @@ public class MarketplaceBookingDto {
     private BigDecimal estimatedFare;
     private String currencyCode;
     private String tripDirection;
+
+    // Cargo fields
+    private String weightTier;
+    private String cargoDescription;
+    private boolean driverProvidesLoading;
 }

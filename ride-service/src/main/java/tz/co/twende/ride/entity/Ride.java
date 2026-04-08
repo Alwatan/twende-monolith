@@ -143,4 +143,14 @@ public class Ride extends BaseEntity {
 
     @Column(name = "payment_timing", nullable = false, length = 20)
     private String paymentTiming = "AT_END";
+
+    // Cargo fields
+    @Column(name = "cargo_description", columnDefinition = "TEXT")
+    private String cargoDescription;
+
+    @Column(name = "weight_tier", length = 10)
+    private String weightTier;
+
+    @Column(name = "driver_provides_loading", nullable = false)
+    private boolean driverProvidesLoading;
 }

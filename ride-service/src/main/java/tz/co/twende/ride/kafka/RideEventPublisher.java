@@ -128,6 +128,8 @@ public class RideEventPublisher {
         event.setDropoffAddress(ride.getDropoffAddress());
         event.setEstimatedFare(ride.getEstimatedFare());
         event.setCurrencyCode(ride.getCurrencyCode());
+        event.setWeightTier(ride.getWeightTier());
+        event.setDriverProvidesLoading(ride.isDriverProvidesLoading());
         event.setEventType("BOOKING_REQUESTED");
         event.setCountryCode(ride.getCountryCode());
 

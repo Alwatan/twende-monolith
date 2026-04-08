@@ -158,6 +158,73 @@ class MarketplaceServiceTest {
     }
 
     @Test
+    void givenCargoBookingEvent_whenAddToMarketplace_thenCargoFieldsStored() {
+        BookingRequestedEvent event = new BookingRequestedEvent();
+        event.setBookingId(UUID.randomUUID());
+        event.setRiderId(UUID.randomUUID());
+        event.setServiceCategory("CARGO");
+        event.setVehicleType("TRUCK_LIGHT");
+        event.setWeightTier("FULL");
+        event.setDriverProvidesLoading(true);
+        event.setScheduledPickupAt(Instant.now().plus(1, ChronoUnit.DAYS));
+        event.setPickupAddress("Kariakoo");
+        event.setDropoffAddress("Kigamboni");
+        event.setEstimatedFare(new BigDecimal("25000"));
+        event.setCurrencyCode("TZS");
+        event.setCountryCode("TZ");
+
+        when(stringRedisTemplate.opsForZSet()).thenReturn(zSetOps);
+        when(stringRedisTemplate.opsForHash()).thenReturn(hashOps);
+
+        marketplaceService.addBookingToMarketplace(event);
+
+        verify(zSetOps).add(eq("marketplace:TZ:CARGO:TRUCK_LIGHT"), anyString(), anyDouble());
+        verify(hashOps)
+                .putAll(
+                        anyString(),
+                        argThat(
+                                (java.util.Map<String, String> map) ->
+                                        "FULL".equals(map.get("weightTier"))
+                                                && "true"
+                                                        .equals(map.get("driverProvidesLoading"))));
+        verify(stringRedisTemplate, times(2)).expire(anyString(), any(Duration.class));
+    }
+
+    @Test
+    void givenCargoBookingInRedis_whenGetAvailableBookings_thenCargoFieldsLoaded() {
+        UUID bookingId = UUID.randomUUID();
+        String bookingIdStr = bookingId.toString();
+
+        when(stringRedisTemplate.opsForZSet()).thenReturn(zSetOps);
+        when(zSetOps.rangeByScore(anyString(), anyDouble(), anyDouble()))
+                .thenReturn(Set.of(bookingIdStr));
+
+        when(stringRedisTemplate.opsForHash()).thenReturn(hashOps);
+        Map<Object, Object> bookingData = new HashMap<>();
+        bookingData.put("bookingId", bookingIdStr);
+        bookingData.put("serviceCategory", "CARGO");
+        bookingData.put("vehicleType", "TRUCK_LIGHT");
+        bookingData.put("qualityTier", "");
+        bookingData.put("scheduledPickupAt", Instant.now().plus(1, ChronoUnit.DAYS).toString());
+        bookingData.put("pickupAddress", "Kariakoo");
+        bookingData.put("dropoffAddress", "Kigamboni");
+        bookingData.put("estimatedFare", "25000");
+        bookingData.put("currencyCode", "TZS");
+        bookingData.put("weightTier", "FULL");
+        bookingData.put("driverProvidesLoading", "true");
+        when(hashOps.entries("marketplace:booking:" + bookingIdStr)).thenReturn(bookingData);
+
+        List<MarketplaceBookingDto> result =
+                marketplaceService.getAvailableBookings(
+                        "TZ", "CARGO", "TRUCK_LIGHT", null, null, null);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getServiceCategory()).isEqualTo("CARGO");
+        assertThat(result.get(0).getWeightTier()).isEqualTo("FULL");
+        assertThat(result.get(0).isDriverProvidesLoading()).isTrue();
+    }
+
+    @Test
     void givenEmptyMarketplace_whenGetAvailableBookings_thenReturnEmptyList() {
         when(stringRedisTemplate.opsForZSet()).thenReturn(zSetOps);
         when(zSetOps.rangeByScore(anyString(), anyDouble(), anyDouble())).thenReturn(null);

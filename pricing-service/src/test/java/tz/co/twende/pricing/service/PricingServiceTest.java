@@ -397,6 +397,175 @@ class PricingServiceTest {
                 .isEqualByComparingTo(new BigDecimal("30000"));
     }
 
+    // ---- Cargo pricing tests ----
+
+    private VehicleTypeConfigDto cargoTuktukConfig() {
+        return VehicleTypeConfigDto.builder()
+                .vehicleType("CARGO_TUKTUK")
+                .baseFare(new BigDecimal("5000"))
+                .perKm(new BigDecimal("800"))
+                .perMinute(BigDecimal.ZERO)
+                .minimumFare(new BigDecimal("5000"))
+                .cancellationFee(new BigDecimal("2000"))
+                .surgeMultiplierCap(new BigDecimal("1.0"))
+                .weightTierSurcharges("{\"LIGHT\": 0, \"MEDIUM\": 2000, \"FULL\": 5000}")
+                .build();
+    }
+
+    private VehicleTypeConfigDto truckHeavyConfig() {
+        return VehicleTypeConfigDto.builder()
+                .vehicleType("TRUCK_HEAVY")
+                .baseFare(new BigDecimal("50000"))
+                .perKm(new BigDecimal("3500"))
+                .perMinute(BigDecimal.ZERO)
+                .minimumFare(new BigDecimal("50000"))
+                .cancellationFee(new BigDecimal("15000"))
+                .surgeMultiplierCap(new BigDecimal("1.0"))
+                .weightTierSurcharges("{\"LIGHT\": 0, \"MEDIUM\": 15000, \"FULL\": 30000}")
+                .build();
+    }
+
+    @Test
+    void givenCargoLightTier_whenEstimate_thenNoWeightSurcharge() {
+        EstimateRequest request =
+                EstimateRequest.builder()
+                        .vehicleType("CARGO_TUKTUK")
+                        .countryCode("TZ")
+                        .pickupLat(new BigDecimal("-6.7728"))
+                        .pickupLng(new BigDecimal("39.2310"))
+                        .dropoffLat(new BigDecimal("-6.8160"))
+                        .dropoffLng(new BigDecimal("39.2803"))
+                        .cityId(UUID.randomUUID())
+                        .serviceCategory("CARGO")
+                        .weightTier("LIGHT")
+                        .build();
+
+        RouteDto route = RouteDto.builder().distanceMetres(10000).durationSeconds(1200).build();
+
+        when(locationServiceClient.checkZones(any(), any(), any())).thenReturn(noZones());
+        when(locationServiceClient.getRoute(any(), any(), any(), any(), any())).thenReturn(route);
+        when(countryConfigClient.getVehicleTypeConfig("TZ", "CARGO_TUKTUK"))
+                .thenReturn(cargoTuktukConfig());
+
+        EstimateResponse response = pricingService.calculateEstimate(request);
+
+        // baseFare=5000 + distance=10*800=8000 + weightSurcharge=0 = 13000
+        // NO time component
+        assertThat(response.getEstimatedFare()).isEqualByComparingTo(new BigDecimal("13000"));
+        assertThat(response.getFareBreakdown().getTimeFare()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(response.getFareBreakdown().getWeightTierSurcharge())
+                .isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(response.getSurgeMultiplier()).isEqualByComparingTo(BigDecimal.ONE);
+    }
+
+    @Test
+    void givenCargoFullTier_whenEstimate_thenWeightSurchargeApplied() {
+        EstimateRequest request =
+                EstimateRequest.builder()
+                        .vehicleType("CARGO_TUKTUK")
+                        .countryCode("TZ")
+                        .pickupLat(new BigDecimal("-6.7728"))
+                        .pickupLng(new BigDecimal("39.2310"))
+                        .dropoffLat(new BigDecimal("-6.8160"))
+                        .dropoffLng(new BigDecimal("39.2803"))
+                        .cityId(UUID.randomUUID())
+                        .serviceCategory("CARGO")
+                        .weightTier("FULL")
+                        .build();
+
+        RouteDto route = RouteDto.builder().distanceMetres(10000).durationSeconds(1200).build();
+
+        when(locationServiceClient.checkZones(any(), any(), any())).thenReturn(noZones());
+        when(locationServiceClient.getRoute(any(), any(), any(), any(), any())).thenReturn(route);
+        when(countryConfigClient.getVehicleTypeConfig("TZ", "CARGO_TUKTUK"))
+                .thenReturn(cargoTuktukConfig());
+
+        EstimateResponse response = pricingService.calculateEstimate(request);
+
+        // baseFare=5000 + distance=10*800=8000 + weightSurcharge=5000 = 18000
+        assertThat(response.getEstimatedFare()).isEqualByComparingTo(new BigDecimal("18000"));
+        assertThat(response.getFareBreakdown().getWeightTierSurcharge())
+                .isEqualByComparingTo(new BigDecimal("5000"));
+    }
+
+    @Test
+    void givenCargoHeavyTruck_whenEstimate_thenCorrectFareWithMediumWeight() {
+        EstimateRequest request =
+                EstimateRequest.builder()
+                        .vehicleType("TRUCK_HEAVY")
+                        .countryCode("TZ")
+                        .pickupLat(new BigDecimal("-6.7728"))
+                        .pickupLng(new BigDecimal("39.2310"))
+                        .dropoffLat(new BigDecimal("-6.8160"))
+                        .dropoffLng(new BigDecimal("39.2803"))
+                        .cityId(UUID.randomUUID())
+                        .serviceCategory("CARGO")
+                        .weightTier("MEDIUM")
+                        .build();
+
+        RouteDto route = RouteDto.builder().distanceMetres(50000).durationSeconds(7200).build();
+
+        when(locationServiceClient.checkZones(any(), any(), any())).thenReturn(noZones());
+        when(locationServiceClient.getRoute(any(), any(), any(), any(), any())).thenReturn(route);
+        when(countryConfigClient.getVehicleTypeConfig("TZ", "TRUCK_HEAVY"))
+                .thenReturn(truckHeavyConfig());
+
+        EstimateResponse response = pricingService.calculateEstimate(request);
+
+        // baseFare=50000 + distance=50*3500=175000 + weightSurcharge=15000 = 240000
+        // No time component, no surge for cargo
+        assertThat(response.getEstimatedFare()).isEqualByComparingTo(new BigDecimal("240000"));
+        assertThat(response.getFareBreakdown().getTimeFare()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(response.getFareBreakdown().getSurgeFare())
+                .isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(response.getFareBreakdown().getWeightTierSurcharge())
+                .isEqualByComparingTo(new BigDecimal("15000"));
+    }
+
+    @Test
+    void givenCargoNoTimeComponent_whenEstimate_thenTimeFareIsZero() {
+        // Even with long duration, cargo has no time component
+        EstimateRequest request =
+                EstimateRequest.builder()
+                        .vehicleType("CARGO_TUKTUK")
+                        .countryCode("TZ")
+                        .pickupLat(new BigDecimal("-6.7728"))
+                        .pickupLng(new BigDecimal("39.2310"))
+                        .dropoffLat(new BigDecimal("-6.8160"))
+                        .dropoffLng(new BigDecimal("39.2803"))
+                        .cityId(UUID.randomUUID())
+                        .serviceCategory("CARGO")
+                        .weightTier("MEDIUM")
+                        .build();
+
+        // 3 hours of route duration — should NOT affect cargo price
+        RouteDto route = RouteDto.builder().distanceMetres(5000).durationSeconds(10800).build();
+
+        when(locationServiceClient.checkZones(any(), any(), any())).thenReturn(noZones());
+        when(locationServiceClient.getRoute(any(), any(), any(), any(), any())).thenReturn(route);
+        when(countryConfigClient.getVehicleTypeConfig("TZ", "CARGO_TUKTUK"))
+                .thenReturn(cargoTuktukConfig());
+
+        EstimateResponse response = pricingService.calculateEstimate(request);
+
+        // baseFare=5000 + distance=5*800=4000 + weightSurcharge=2000 = 11000
+        assertThat(response.getEstimatedFare()).isEqualByComparingTo(new BigDecimal("11000"));
+        assertThat(response.getFareBreakdown().getTimeFare()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    void givenWeightTierSurchargesJson_whenParse_thenCorrectValue() {
+        String json = "{\"LIGHT\": 0, \"MEDIUM\": 2000, \"FULL\": 5000}";
+        assertThat(pricingService.parseWeightTierSurcharge(json, "LIGHT"))
+                .isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(pricingService.parseWeightTierSurcharge(json, "MEDIUM"))
+                .isEqualByComparingTo(new BigDecimal("2000"));
+        assertThat(pricingService.parseWeightTierSurcharge(json, "FULL"))
+                .isEqualByComparingTo(new BigDecimal("5000"));
+        assertThat(pricingService.parseWeightTierSurcharge(json, "UNKNOWN"))
+                .isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
     @Test
     void givenCharterNoEstimatedHours_whenEstimate_thenDefaultsToOneHour() {
         EstimateRequest request =

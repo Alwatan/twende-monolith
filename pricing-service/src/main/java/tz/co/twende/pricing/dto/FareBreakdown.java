@@ -21,4 +21,7 @@ public class FareBreakdown {
     // Charter fields
     private BigDecimal charterHourlyFare;
     private BigDecimal qualityTierSurcharge;
+
+    // Cargo fields
+    private BigDecimal weightTierSurcharge;
 }

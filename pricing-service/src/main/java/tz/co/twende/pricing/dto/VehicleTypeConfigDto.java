@@ -23,4 +23,7 @@ public class VehicleTypeConfigDto {
     private BigDecimal perHour;
     private String qualityTier;
     private BigDecimal qualityTierSurcharge;
+
+    // Cargo fields
+    private String weightTierSurcharges;
 }

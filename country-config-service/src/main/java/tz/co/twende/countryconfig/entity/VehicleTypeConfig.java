@@ -63,4 +63,9 @@ public class VehicleTypeConfig extends BaseEntity {
 
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal qualityTierSurcharge = BigDecimal.ZERO;
+
+    // Cargo fields
+    @Column(columnDefinition = "JSONB")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    private String weightTierSurcharges;
 }

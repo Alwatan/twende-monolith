@@ -59,6 +59,11 @@ public class RideResponse {
     private Instant returnPickupAt;
     private String paymentTiming;
 
+    // Cargo fields
+    private String cargoDescription;
+    private String weightTier;
+    private boolean driverProvidesLoading;
+
     private Instant createdAt;
     private Instant updatedAt;
 }

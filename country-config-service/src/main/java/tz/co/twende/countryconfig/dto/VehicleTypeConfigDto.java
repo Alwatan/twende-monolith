@@ -38,6 +38,9 @@ public class VehicleTypeConfigDto implements Serializable {
     private BigDecimal perHour;
     private BigDecimal qualityTierSurcharge;
 
+    // Cargo fields
+    private String weightTierSurcharges;
+
     private Instant createdAt;
     private Instant updatedAt;
 }

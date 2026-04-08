@@ -61,12 +61,17 @@ public class PricingService {
                             + request.getVehicleType());
         }
 
-        // Check if this is a charter request
+        // Check if this is a charter or cargo request
         boolean isCharter = "CHARTER".equals(request.getServiceCategory());
+        boolean isCargo = "CARGO".equals(request.getServiceCategory());
 
         if (isCharter) {
             return calculateCharterEstimate(
                     request, route, vehicleConfig, request.getCountryCode());
+        }
+
+        if (isCargo) {
+            return calculateCargoEstimate(request, route, vehicleConfig, request.getCountryCode());
         }
 
         // 4. Get surge from Redis
@@ -172,6 +177,99 @@ public class PricingService {
                 .surgeMultiplier(BigDecimal.ONE)
                 .fareBreakdown(breakdown)
                 .build();
+    }
+
+    EstimateResponse calculateCargoEstimate(
+            EstimateRequest request,
+            RouteDto route,
+            VehicleTypeConfigDto vehicleConfig,
+            String countryCode) {
+        BigDecimal distanceKm =
+                BigDecimal.valueOf(route.getDistanceMetres())
+                        .divide(METRES_TO_KM, 4, RoundingMode.HALF_UP);
+
+        BigDecimal baseFare = vehicleConfig.getBaseFare();
+        BigDecimal distanceFare = distanceKm.multiply(vehicleConfig.getPerKm());
+
+        // Weight tier surcharge from JSONB config
+        BigDecimal weightTierSurcharge = BigDecimal.ZERO;
+        if (request.getWeightTier() != null && vehicleConfig.getWeightTierSurcharges() != null) {
+            weightTierSurcharge =
+                    parseWeightTierSurcharge(
+                            vehicleConfig.getWeightTierSurcharges(), request.getWeightTier());
+        }
+
+        // Cargo pricing: baseFare + (distanceKm * perKm) + weightTierSurcharge
+        // NO time component, NO surge
+        BigDecimal totalFare = baseFare.add(distanceFare).add(weightTierSurcharge);
+
+        // Apply minimum fare
+        boolean minimumApplied = false;
+        if (totalFare.compareTo(vehicleConfig.getMinimumFare()) < 0) {
+            totalFare = vehicleConfig.getMinimumFare();
+            minimumApplied = true;
+        }
+
+        // Round trip: 2x distance with 10% discount on return leg
+        if ("ROUND_TRIP".equals(request.getTripDirection())) {
+            BigDecimal returnDistanceFare =
+                    distanceFare.multiply(new BigDecimal("0.90")); // 10% discount
+            totalFare = totalFare.add(returnDistanceFare);
+        }
+
+        // Round to TZS
+        totalFare = totalFare.setScale(TZS_SCALE, RoundingMode.HALF_UP);
+        baseFare = baseFare.setScale(TZS_SCALE, RoundingMode.HALF_UP);
+        distanceFare = distanceFare.setScale(TZS_SCALE, RoundingMode.HALF_UP);
+        weightTierSurcharge = weightTierSurcharge.setScale(TZS_SCALE, RoundingMode.HALF_UP);
+
+        FareBreakdown breakdown =
+                FareBreakdown.builder()
+                        .baseFare(baseFare)
+                        .distanceFare(distanceFare)
+                        .timeFare(BigDecimal.ZERO)
+                        .surgeFare(BigDecimal.ZERO)
+                        .airportSurcharge(BigDecimal.ZERO)
+                        .minimumFareApplied(minimumApplied)
+                        .weightTierSurcharge(weightTierSurcharge)
+                        .build();
+
+        String currency = getCurrency(countryCode);
+        return EstimateResponse.builder()
+                .estimatedFare(totalFare)
+                .currency(currency)
+                .displayFare(formatFare(totalFare, currency))
+                .distanceMetres(route.getDistanceMetres())
+                .durationSeconds(route.getDurationSeconds())
+                .surgeMultiplier(BigDecimal.ONE)
+                .fareBreakdown(breakdown)
+                .build();
+    }
+
+    BigDecimal parseWeightTierSurcharge(String weightTierSurchargesJson, String weightTier) {
+        try {
+            // Parse simple JSON like {"LIGHT": 0, "MEDIUM": 2000, "FULL": 5000}
+            String cleaned = weightTierSurchargesJson.trim();
+            if (cleaned.startsWith("{") && cleaned.endsWith("}")) {
+                cleaned = cleaned.substring(1, cleaned.length() - 1);
+                for (String pair : cleaned.split(",")) {
+                    String[] kv = pair.split(":");
+                    if (kv.length == 2) {
+                        String key = kv[0].trim().replace("\"", "");
+                        String value = kv[1].trim();
+                        if (key.equals(weightTier)) {
+                            return new BigDecimal(value);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn(
+                    "Failed to parse weight tier surcharges: {} for tier: {}",
+                    weightTierSurchargesJson,
+                    weightTier);
+        }
+        return BigDecimal.ZERO;
     }
 
     public CalculateResponse calculateFinal(CalculateRequest request) {

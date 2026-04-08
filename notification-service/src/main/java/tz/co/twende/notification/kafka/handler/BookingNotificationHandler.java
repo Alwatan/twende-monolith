@@ -22,6 +22,7 @@ public class BookingNotificationHandler {
 
         String countryCode = event.getCountryCode();
         String locale = resolveLocale(countryCode);
+        boolean isCargo = "CARGO".equals(event.getServiceCategory());
 
         String fareStr =
                 event.getEstimatedFare() != null ? event.getEstimatedFare().toPlainString() : "0";
@@ -30,9 +31,13 @@ public class BookingNotificationHandler {
                         ? event.getScheduledPickupAt().toString()
                         : "TBD";
 
+        String templateKey = isCargo ? "cargo.confirmed" : "booking.confirmed";
+        String title = isCargo ? "Cargo Booking Confirmed" : "Booking Confirmed";
+        String notificationType = isCargo ? "CARGO_BOOKING_CONFIRMED" : "BOOKING_CONFIRMED";
+
         String body =
                 templateResolver.resolveTemplate(
-                        "booking.confirmed",
+                        templateKey,
                         locale,
                         Map.of(
                                 "vehicleType",
@@ -47,10 +52,10 @@ public class BookingNotificationHandler {
         notificationService.sendPush(
                 countryCode,
                 event.getRiderId(),
-                "Booking Confirmed",
+                title,
                 body,
-                Map.of("type", "BOOKING_CONFIRMED", "bookingId", event.getBookingId().toString()),
-                "booking.confirmed");
+                Map.of("type", notificationType, "bookingId", event.getBookingId().toString()),
+                templateKey);
     }
 
     public void handleBookingCompleted(BookingCompletedEvent event) {
@@ -58,20 +63,27 @@ public class BookingNotificationHandler {
 
         String countryCode = event.getCountryCode();
         String locale = resolveLocale(countryCode);
+        boolean isCargo = "CARGO".equals(event.getServiceCategory());
 
         String fareStr = event.getFinalFare() != null ? event.getFinalFare().toPlainString() : "0";
 
+        String templateKey = isCargo ? "cargo.completed" : "charter.completed";
+        String title = isCargo ? "Cargo Delivered" : "Charter Completed";
+        String notificationType = isCargo ? "CARGO_COMPLETED" : "CHARTER_COMPLETED";
+
         String body =
                 templateResolver.resolveTemplate(
-                        "charter.completed", locale, Map.of("fare", fareStr, "currency", "TSh"));
+                        templateKey,
+                        locale,
+                        Map.of("fare", fareStr, "amount", fareStr, "currency", "TSh"));
 
         notificationService.sendPush(
                 countryCode,
                 event.getRiderId(),
-                "Charter Completed",
+                title,
                 body,
-                Map.of("type", "CHARTER_COMPLETED", "bookingId", event.getBookingId().toString()),
-                "charter.completed");
+                Map.of("type", notificationType, "bookingId", event.getBookingId().toString()),
+                templateKey);
     }
 
     private String resolveLocale(String countryCode) {

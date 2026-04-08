@@ -603,6 +603,164 @@ class RideServiceTest {
         verify(eventPublisher, never()).publishBookingRequested(any());
     }
 
+    // ---- Cargo booking tests ----
+
+    @Test
+    void givenCargoRequest_whenCreateRide_thenBookingRequestedEventPublished() {
+        UUID riderId = UUID.randomUUID();
+        CreateRideRequest request = new CreateRideRequest();
+        request.setVehicleType("CARGO_TUKTUK");
+        request.setPickupLat(BigDecimal.valueOf(-6.7728));
+        request.setPickupLng(BigDecimal.valueOf(39.2310));
+        request.setPickupAddress("Kariakoo Market");
+        request.setDropoffLat(BigDecimal.valueOf(-6.8160));
+        request.setDropoffLng(BigDecimal.valueOf(39.2803));
+        request.setDropoffAddress("Mlimani City");
+        request.setServiceCategory("CARGO");
+        request.setWeightTier("MEDIUM");
+        request.setScheduledPickupAt(Instant.now().plus(1, ChronoUnit.DAYS));
+        request.setCargoDescription("Office furniture");
+        request.setDriverProvidesLoading(true);
+
+        when(locationClient.isInRestrictedZone(any(), any())).thenReturn(false);
+        EstimateDto estimate = new EstimateDto();
+        estimate.setEstimatedFare(BigDecimal.valueOf(12000));
+        estimate.setCurrency("TZS");
+        estimate.setDistanceMetres(10000);
+        estimate.setDurationSeconds(1200);
+        when(pricingClient.getFareEstimate(any(), any(), any(), any(), any(), any()))
+                .thenReturn(estimate);
+        when(loyaltyClient.findApplicableOffer(any(), any(), any())).thenReturn(null);
+        when(rideRepository.save(any(Ride.class)))
+                .thenAnswer(
+                        invocation -> {
+                            Ride r = invocation.getArgument(0);
+                            if (r.getId() == null) r.setId(UUID.randomUUID());
+                            return r;
+                        });
+        when(statusEventRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        Ride ride = rideService.createRide(riderId, "TZ", request);
+
+        assertEquals("CARGO", ride.getServiceCategory());
+        assertEquals("SCHEDULED", ride.getBookingType());
+        assertEquals("MEDIUM", ride.getWeightTier());
+        assertEquals("Office furniture", ride.getCargoDescription());
+        assertTrue(ride.isDriverProvidesLoading());
+        assertNull(ride.getMatchingTimeoutAt());
+        verify(eventPublisher).publishBookingRequested(any());
+        verify(eventPublisher, never()).publishRideRequested(any());
+    }
+
+    @Test
+    void givenCargoRequestMissingWeightTier_whenCreateRide_thenThrowBadRequest() {
+        UUID riderId = UUID.randomUUID();
+        CreateRideRequest request = new CreateRideRequest();
+        request.setVehicleType("TRUCK_LIGHT");
+        request.setPickupLat(BigDecimal.valueOf(-6.7728));
+        request.setPickupLng(BigDecimal.valueOf(39.2310));
+        request.setPickupAddress("Kariakoo");
+        request.setDropoffLat(BigDecimal.valueOf(-6.8160));
+        request.setDropoffLng(BigDecimal.valueOf(39.2803));
+        request.setDropoffAddress("Dest");
+        request.setServiceCategory("CARGO");
+        request.setScheduledPickupAt(Instant.now().plus(1, ChronoUnit.DAYS));
+        // no weightTier
+
+        when(locationClient.isInRestrictedZone(any(), any())).thenReturn(false);
+        EstimateDto estimate = new EstimateDto();
+        estimate.setEstimatedFare(BigDecimal.valueOf(20000));
+        estimate.setCurrency("TZS");
+        when(pricingClient.getFareEstimate(any(), any(), any(), any(), any(), any()))
+                .thenReturn(estimate);
+        when(loyaltyClient.findApplicableOffer(any(), any(), any())).thenReturn(null);
+
+        assertThrows(
+                BadRequestException.class, () -> rideService.createRide(riderId, "TZ", request));
+    }
+
+    @Test
+    void givenCargoRequestInvalidWeightTier_whenCreateRide_thenThrowBadRequest() {
+        UUID riderId = UUID.randomUUID();
+        CreateRideRequest request = new CreateRideRequest();
+        request.setVehicleType("TRUCK_LIGHT");
+        request.setPickupLat(BigDecimal.valueOf(-6.7728));
+        request.setPickupLng(BigDecimal.valueOf(39.2310));
+        request.setPickupAddress("Kariakoo");
+        request.setDropoffLat(BigDecimal.valueOf(-6.8160));
+        request.setDropoffLng(BigDecimal.valueOf(39.2803));
+        request.setDropoffAddress("Dest");
+        request.setServiceCategory("CARGO");
+        request.setScheduledPickupAt(Instant.now().plus(1, ChronoUnit.DAYS));
+        request.setWeightTier("INVALID");
+
+        when(locationClient.isInRestrictedZone(any(), any())).thenReturn(false);
+        EstimateDto estimate = new EstimateDto();
+        estimate.setEstimatedFare(BigDecimal.valueOf(20000));
+        estimate.setCurrency("TZS");
+        when(pricingClient.getFareEstimate(any(), any(), any(), any(), any(), any()))
+                .thenReturn(estimate);
+        when(loyaltyClient.findApplicableOffer(any(), any(), any())).thenReturn(null);
+
+        assertThrows(
+                BadRequestException.class, () -> rideService.createRide(riderId, "TZ", request));
+    }
+
+    @Test
+    void givenCargoRequestMissingScheduledPickupAt_whenCreateRide_thenThrowBadRequest() {
+        UUID riderId = UUID.randomUUID();
+        CreateRideRequest request = new CreateRideRequest();
+        request.setVehicleType("TRUCK_MEDIUM");
+        request.setPickupLat(BigDecimal.valueOf(-6.7728));
+        request.setPickupLng(BigDecimal.valueOf(39.2310));
+        request.setPickupAddress("Kariakoo");
+        request.setDropoffLat(BigDecimal.valueOf(-6.8160));
+        request.setDropoffLng(BigDecimal.valueOf(39.2803));
+        request.setDropoffAddress("Dest");
+        request.setServiceCategory("CARGO");
+        request.setWeightTier("FULL");
+        // no scheduledPickupAt
+
+        when(locationClient.isInRestrictedZone(any(), any())).thenReturn(false);
+        EstimateDto estimate = new EstimateDto();
+        estimate.setEstimatedFare(BigDecimal.valueOf(50000));
+        estimate.setCurrency("TZS");
+        when(pricingClient.getFareEstimate(any(), any(), any(), any(), any(), any()))
+                .thenReturn(estimate);
+        when(loyaltyClient.findApplicableOffer(any(), any(), any())).thenReturn(null);
+
+        assertThrows(
+                BadRequestException.class, () -> rideService.createRide(riderId, "TZ", request));
+    }
+
+    @Test
+    void givenCargoRideInProgress_whenCompleteTrip_thenBookingCompletedEventPublished() {
+        UUID rideId = UUID.randomUUID();
+        UUID driverId = UUID.randomUUID();
+        Ride ride = createRideWithStatus(rideId, RideStatus.IN_PROGRESS);
+        ride.setDriverId(driverId);
+        ride.setServiceCategory("CARGO");
+        ride.setWeightTier("FULL");
+        ride.setCargoDescription("Building materials");
+        ride.setEstimatedFare(BigDecimal.valueOf(55000));
+        ride.setDistanceMetres(25000);
+        ride.setDurationSeconds(3600);
+
+        EstimateDto finalCalc = new EstimateDto();
+        finalCalc.setEstimatedFare(BigDecimal.valueOf(55000));
+
+        when(rideRepository.findByIdAndDriverId(rideId, driverId)).thenReturn(Optional.of(ride));
+        when(pricingClient.calculateFinalFare(any(), any(), any(), any())).thenReturn(finalCalc);
+        when(rideRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(statusEventRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        Ride result = rideService.completeTrip(rideId, driverId);
+
+        assertEquals(RideStatus.COMPLETED, result.getStatus());
+        verify(eventPublisher).publishBookingCompleted(any());
+        verify(eventPublisher, never()).publishRideCompleted(any());
+    }
+
     private Ride createRideWithStatus(UUID rideId, RideStatus status) {
         Ride ride = new Ride();
         ride.setId(rideId);

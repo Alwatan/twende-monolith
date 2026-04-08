@@ -68,6 +68,8 @@ public class MarketplaceService {
         bookingData.put(
                 "currencyCode", event.getCurrencyCode() != null ? event.getCurrencyCode() : "TZS");
         bookingData.put("riderId", event.getRiderId() != null ? event.getRiderId().toString() : "");
+        bookingData.put("weightTier", event.getWeightTier() != null ? event.getWeightTier() : "");
+        bookingData.put("driverProvidesLoading", String.valueOf(event.isDriverProvidesLoading()));
         stringRedisTemplate.opsForHash().putAll(dataKey, bookingData);
         stringRedisTemplate.expire(dataKey, BOOKING_TTL);
 
@@ -189,6 +191,12 @@ public class MarketplaceService {
                 .dropoffAddress(data.getOrDefault("dropoffAddress", "").toString())
                 .estimatedFare(estimatedFare)
                 .currencyCode(data.getOrDefault("currencyCode", "TZS").toString())
+                .weightTier(data.getOrDefault("weightTier", "").toString())
+                .driverProvidesLoading(
+                        "true"
+                                .equals(
+                                        data.getOrDefault("driverProvidesLoading", "false")
+                                                .toString()))
                 .build();
     }
 }

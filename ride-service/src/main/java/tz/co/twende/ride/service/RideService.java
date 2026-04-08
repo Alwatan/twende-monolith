@@ -111,6 +111,7 @@ public class RideService {
         String serviceCategory =
                 request.getServiceCategory() != null ? request.getServiceCategory() : "RIDE";
         boolean isCharter = "CHARTER".equals(serviceCategory);
+        boolean isCargo = "CARGO".equals(serviceCategory);
 
         // Validate charter-specific fields
         if (isCharter) {
@@ -123,6 +124,24 @@ public class RideService {
             }
             if (request.getQualityTier() == null || request.getQualityTier().isBlank()) {
                 throw new BadRequestException("qualityTier is required for charter bookings");
+            }
+        }
+
+        // Validate cargo-specific fields
+        if (isCargo) {
+            if (request.getScheduledPickupAt() == null) {
+                throw new BadRequestException("scheduledPickupAt is required for cargo bookings");
+            }
+            if (request.getScheduledPickupAt().isBefore(Instant.now())) {
+                throw new BadRequestException(
+                        "scheduledPickupAt must be in the future for cargo bookings");
+            }
+            if (request.getWeightTier() == null || request.getWeightTier().isBlank()) {
+                throw new BadRequestException("weightTier is required for cargo bookings");
+            }
+            String wt = request.getWeightTier();
+            if (!"LIGHT".equals(wt) && !"MEDIUM".equals(wt) && !"FULL".equals(wt)) {
+                throw new BadRequestException("weightTier must be LIGHT, MEDIUM, or FULL");
             }
         }
 
@@ -157,7 +176,7 @@ public class RideService {
 
         // Charter / scheduled booking fields
         ride.setServiceCategory(serviceCategory);
-        ride.setBookingType(isCharter ? "SCHEDULED" : "ON_DEMAND");
+        ride.setBookingType((isCharter || isCargo) ? "SCHEDULED" : "ON_DEMAND");
         ride.setScheduledPickupAt(request.getScheduledPickupAt());
         ride.setTripDirection(request.getTripDirection());
         ride.setQualityTier(request.getQualityTier());
@@ -165,11 +184,18 @@ public class RideService {
         ride.setPaymentTiming(
                 request.getPaymentTiming() != null ? request.getPaymentTiming() : "AT_END");
 
+        // Cargo fields
+        ride.setCargoDescription(request.getCargoDescription());
+        ride.setWeightTier(request.getWeightTier());
+        ride.setDriverProvidesLoading(
+                request.getDriverProvidesLoading() != null && request.getDriverProvidesLoading());
+
         Instant now = Instant.now();
         ride.setRequestedAt(now);
 
-        // Charter bookings don't use the matching timeout since they use marketplace model
-        if (!isCharter) {
+        // Charter and cargo bookings don't use the matching timeout since they use marketplace
+        // model
+        if (!isCharter && !isCargo) {
             ride.setMatchingTimeoutAt(now.plus(MATCHING_TIMEOUT_MINUTES, ChronoUnit.MINUTES));
         }
 
@@ -184,7 +210,7 @@ public class RideService {
         logStatusEvent(ride, null, RideStatus.REQUESTED, riderId, "RIDER");
 
         // 7. Publish appropriate event based on service category
-        if (isCharter) {
+        if (isCharter || isCargo) {
             eventPublisher.publishBookingRequested(ride);
         } else {
             eventPublisher.publishRideRequested(ride);
@@ -338,7 +364,8 @@ public class RideService {
         logStatusEvent(ride, previousStatus, RideStatus.COMPLETED, driverId, "DRIVER");
 
         // Publish appropriate completion event based on service category
-        if ("CHARTER".equals(ride.getServiceCategory())) {
+        if ("CHARTER".equals(ride.getServiceCategory())
+                || "CARGO".equals(ride.getServiceCategory())) {
             eventPublisher.publishBookingCompleted(ride);
         } else {
             eventPublisher.publishRideCompleted(ride);

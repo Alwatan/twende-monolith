@@ -47,4 +47,9 @@ public class CreateRideRequest {
     private String qualityTier;
     private Instant returnPickupAt;
     private String paymentTiming;
+
+    // Cargo fields (optional, only for CARGO service category)
+    private String cargoDescription;
+    private String weightTier;
+    private Boolean driverProvidesLoading;
 }

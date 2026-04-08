@@ -48,4 +48,7 @@ public class EstimateRequest {
     private String qualityTier;
     private String tripDirection;
     private BigDecimal estimatedHours;
+
+    // Cargo fields (optional)
+    private String weightTier;
 }

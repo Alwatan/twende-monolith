@@ -879,13 +879,13 @@ to build each service, refer to the **"Implementation Steps"** section in that s
 - [x] Charter vehicle type seed data for Tanzania (minibus standard/luxury, bus standard/luxury)
 - [x] Notification templates for booking confirmations, reminders, driver acceptance
 
-### Phase 9 — Cargo Transport
-- [ ] `ride-service` — add `cargoDescription`, `estimatedWeightKg`, `estimatedVolumeM3` fields
+### Phase 9 — Cargo Transport ✅
+- [x] `ride-service` — add `cargoDescription`, `weightTier`, `driverProvidesLoading` fields
       for cargo bookings.
-- [ ] `pricing-service` — cargo pricing: base + distance + weight tier + vehicle class.
-- [ ] `matching-service` — cargo matching: same marketplace model as charter.
-- [ ] Cargo vehicle type seed data for Tanzania (cargo tuk-tuk, light/medium/heavy truck)
-- [ ] Notification templates for cargo booking confirmations
+- [x] `pricing-service` — cargo pricing: base + distance + weight tier surcharge (no time component).
+- [x] `matching-service` — cargo matching: same marketplace model as charter.
+- [x] Cargo vehicle type seed data for Tanzania (cargo tuk-tuk, light/medium/heavy truck)
+- [x] Notification templates for cargo booking confirmations
 
 ---
 
