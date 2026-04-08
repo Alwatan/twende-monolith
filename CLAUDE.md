@@ -1194,15 +1194,41 @@ Every service (except `common-lib`) must have a `Dockerfile` in its module root.
 
 ### Standard Dockerfile (services that depend on common-lib)
 
+**CRITICAL — these 3 things are required and frequently missed:**
+1. **`RUN apk add --no-cache curl`** in the build stage — the Maven wrapper (`mvnw`)
+   uses `curl` to download Maven. Without it, the build fails with `curl: not found`.
+2. **Stub POMs for sibling modules** — the parent `pom.xml` references all 16 modules.
+   When building a single service in Docker, the other modules don't exist, so Maven
+   fails to resolve them. Create minimal stub `pom.xml` files for every sibling module.
+3. **`./mvnw -N install`** — installs the parent POM into the local Maven repo before
+   building child modules. Without it, child modules can't find their parent.
+
+**Do NOT use `COPY .mvn .mvn`** — the `.mvn` directory does not exist in this project.
+The `mvnw` wrapper script downloads Maven on its own using `curl`.
+
 ```dockerfile
 # Stage 1: Build
 FROM eclipse-temurin:21-jdk-alpine AS build
+RUN apk add --no-cache curl
 WORKDIR /workspace
+
+# Copy parent pom, common-lib (real dependency), and the service
 COPY pom.xml .
 COPY common-lib common-lib
 COPY {service-name} {service-name}
+
+# Create minimal pom stubs for sibling modules referenced in parent pom
+RUN for mod in api-gateway auth-service country-config-service user-service driver-service \
+    location-service pricing-service matching-service ride-service payment-service \
+    subscription-service notification-service loyalty-service rating-service \
+    analytics-service compliance-service; do \
+    mkdir -p "$mod"; \
+    echo '<project><modelVersion>4.0.0</modelVersion><parent><groupId>tz.co.twende</groupId><artifactId>twende-parent</artifactId><version>1.0.0-SNAPSHOT</version></parent><artifactId>'"$mod"'</artifactId></project>' > "$mod/pom.xml"; \
+    done
+
 COPY mvnw .
 RUN chmod +x mvnw \
+    && ./mvnw -N install -DskipTests -q \
     && ./mvnw -pl common-lib install -DskipTests -q \
     && ./mvnw -pl {service-name} package -DskipTests -q
 
@@ -1221,16 +1247,29 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
 ### Gateway Dockerfile (no common-lib dependency)
 
 The `api-gateway` does NOT depend on `common-lib` (WebFlux vs WebMvc conflict), so its
-Dockerfile is simpler:
+Dockerfile is simpler. It still needs `curl`, stub POMs, and `-N install`.
 
 ```dockerfile
 # Stage 1: Build
 FROM eclipse-temurin:21-jdk-alpine AS build
+RUN apk add --no-cache curl
 WORKDIR /workspace
+
 COPY pom.xml .
 COPY api-gateway api-gateway
+
+# Create minimal pom stubs for sibling modules referenced in parent pom
+RUN for mod in common-lib auth-service country-config-service user-service driver-service \
+    location-service pricing-service matching-service ride-service payment-service \
+    subscription-service notification-service loyalty-service rating-service \
+    analytics-service compliance-service; do \
+    mkdir -p "$mod"; \
+    echo '<project><modelVersion>4.0.0</modelVersion><parent><groupId>tz.co.twende</groupId><artifactId>twende-parent</artifactId><version>1.0.0-SNAPSHOT</version></parent><artifactId>'"$mod"'</artifactId></project>' > "$mod/pom.xml"; \
+    done
+
 COPY mvnw .
 RUN chmod +x mvnw \
+    && ./mvnw -N install -DskipTests -q \
     && ./mvnw -pl api-gateway package -DskipTests -q
 
 # Stage 2: Run
@@ -1246,9 +1285,13 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
 ```
 
 **Rules:**
+- **`apk add curl`** in the build stage (Maven wrapper needs it)
+- **Stub POMs** for all sibling modules (parent POM references them)
+- **`./mvnw -N install`** before building child modules (installs parent POM)
+- **Never `COPY .mvn .mvn`** — the `.mvn` directory does not exist in this project
 - Runs as non-root `twende` user
 - Uses Alpine JRE for minimal image size
-- Health check via actuator endpoint
+- Health check via `wget` to actuator endpoint (not `curl` — `curl` is not in the JRE image)
 - All config via environment variables (no secrets in image)
 - Build context is the monorepo root (not the service directory)
 - Each service's Implementation Steps must include a Dockerfile step
