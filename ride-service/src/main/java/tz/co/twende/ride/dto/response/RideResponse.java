@@ -50,6 +50,15 @@ public class RideResponse {
     private String cancelReason;
     private String cancelledBy;
 
+    // Charter / Scheduled booking fields
+    private String serviceCategory;
+    private String bookingType;
+    private Instant scheduledPickupAt;
+    private String tripDirection;
+    private String qualityTier;
+    private Instant returnPickupAt;
+    private String paymentTiming;
+
     private Instant createdAt;
     private Instant updatedAt;
 }

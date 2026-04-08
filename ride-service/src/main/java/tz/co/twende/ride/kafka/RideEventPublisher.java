@@ -5,6 +5,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 import tz.co.twende.common.enums.RideStatus;
+import tz.co.twende.common.event.ride.BookingCompletedEvent;
+import tz.co.twende.common.event.ride.BookingRequestedEvent;
 import tz.co.twende.common.event.ride.RideCompletedEvent;
 import tz.co.twende.common.event.ride.RideFareBoostedEvent;
 import tz.co.twende.common.event.ride.RideRequestedEvent;
@@ -107,5 +109,52 @@ public class RideEventPublisher {
         String key = ride.getCountryCode() + ":" + ride.getId();
         kafkaTemplate.send(KafkaConfig.TOPIC_RIDES_FARE_BOOSTED, key, event);
         log.info("Published RideFareBoostedEvent for ride {}", ride.getId());
+    }
+
+    public void publishBookingRequested(Ride ride) {
+        BookingRequestedEvent event = new BookingRequestedEvent();
+        event.setBookingId(ride.getId());
+        event.setRiderId(ride.getRiderId());
+        event.setServiceCategory(ride.getServiceCategory());
+        event.setBookingType(ride.getBookingType());
+        event.setVehicleType(ride.getVehicleType());
+        event.setScheduledPickupAt(ride.getScheduledPickupAt());
+        event.setQualityTier(ride.getQualityTier());
+        event.setPickupLat(ride.getPickupLat());
+        event.setPickupLng(ride.getPickupLng());
+        event.setPickupAddress(ride.getPickupAddress());
+        event.setDropoffLat(ride.getDropoffLat());
+        event.setDropoffLng(ride.getDropoffLng());
+        event.setDropoffAddress(ride.getDropoffAddress());
+        event.setEstimatedFare(ride.getEstimatedFare());
+        event.setCurrencyCode(ride.getCurrencyCode());
+        event.setEventType("BOOKING_REQUESTED");
+        event.setCountryCode(ride.getCountryCode());
+
+        String key = ride.getCountryCode() + ":" + ride.getId();
+        kafkaTemplate.send(KafkaConfig.TOPIC_BOOKING_REQUESTED, key, event);
+        log.info("Published BookingRequestedEvent for booking {}", ride.getId());
+    }
+
+    public void publishBookingCompleted(Ride ride) {
+        BookingCompletedEvent event = new BookingCompletedEvent();
+        event.setBookingId(ride.getId());
+        event.setRiderId(ride.getRiderId());
+        event.setDriverId(ride.getDriverId());
+        event.setServiceCategory(ride.getServiceCategory());
+        event.setVehicleType(ride.getVehicleType());
+        event.setFinalFare(ride.getFinalFare());
+        event.setCurrencyCode(ride.getCurrencyCode());
+        event.setDistanceMetres(ride.getDistanceMetres());
+        event.setDurationSeconds(ride.getDurationSeconds());
+        event.setStartedAt(ride.getStartedAt());
+        event.setCompletedAt(ride.getCompletedAt());
+        event.setFreeRide(ride.isFreeRide());
+        event.setEventType("BOOKING_COMPLETED");
+        event.setCountryCode(ride.getCountryCode());
+
+        String key = ride.getCountryCode() + ":" + ride.getId();
+        kafkaTemplate.send(KafkaConfig.TOPIC_BOOKING_COMPLETED, key, event);
+        log.info("Published BookingCompletedEvent for booking {}", ride.getId());
     }
 }

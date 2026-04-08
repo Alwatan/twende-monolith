@@ -869,15 +869,15 @@ to build each service, refer to the **"Implementation Steps"** section in that s
 - [x] `payment-service` — flat fee deduction from driver wallet on trip completion for
       flat-fee drivers. Calculate Twende's cut = fare * flatFeePercentage.
 
-### Phase 8 — Charter Transport
-- [ ] `ride-service` — add `serviceCategory`, `bookingType`, `scheduledPickupAt`,
+### Phase 8 — Charter Transport ✅
+- [x] `ride-service` — add `serviceCategory`, `bookingType`, `scheduledPickupAt`,
       `tripDirection`, `qualityTier`, `returnPickupAt` fields. Support scheduled bookings.
-- [ ] `pricing-service` — charter pricing: base + distance + duration + vehicle class +
+- [x] `pricing-service` — charter pricing: base + distance + duration + vehicle class +
       quality tier. Round trip = 2x distance pricing with discount.
-- [ ] `matching-service` — scheduled matching mode: drivers browse available charter bookings
+- [x] `matching-service` — scheduled matching mode: drivers browse available charter bookings
       and accept (marketplace model, not broadcast). Filter by vehicle type + quality tier.
-- [ ] Charter vehicle type seed data for Tanzania (minibus standard/luxury, bus standard/luxury)
-- [ ] Notification templates for booking confirmations, reminders, driver acceptance
+- [x] Charter vehicle type seed data for Tanzania (minibus standard/luxury, bus standard/luxury)
+- [x] Notification templates for booking confirmations, reminders, driver acceptance
 
 ### Phase 9 — Cargo Transport
 - [ ] `ride-service` — add `cargoDescription`, `estimatedWeightKg`, `estimatedVolumeM3` fields

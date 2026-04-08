@@ -121,4 +121,26 @@ public class Ride extends BaseEntity {
 
     @Column(name = "matching_timeout_at")
     private Instant matchingTimeoutAt;
+
+    // Charter / Scheduled booking fields
+    @Column(name = "service_category", nullable = false, length = 20)
+    private String serviceCategory = "RIDE";
+
+    @Column(name = "booking_type", nullable = false, length = 20)
+    private String bookingType = "ON_DEMAND";
+
+    @Column(name = "scheduled_pickup_at")
+    private Instant scheduledPickupAt;
+
+    @Column(name = "trip_direction", length = 20)
+    private String tripDirection;
+
+    @Column(name = "quality_tier", length = 20)
+    private String qualityTier;
+
+    @Column(name = "return_pickup_at")
+    private Instant returnPickupAt;
+
+    @Column(name = "payment_timing", nullable = false, length = 20)
+    private String paymentTiming = "AT_END";
 }

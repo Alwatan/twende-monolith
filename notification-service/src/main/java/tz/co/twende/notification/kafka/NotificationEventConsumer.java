@@ -9,6 +9,8 @@ import tz.co.twende.common.event.driver.DriverOfferNotificationEvent;
 import tz.co.twende.common.event.loyalty.FreeRideOfferEarnedEvent;
 import tz.co.twende.common.event.notification.SendNotificationEvent;
 import tz.co.twende.common.event.payment.PaymentCompletedEvent;
+import tz.co.twende.common.event.ride.BookingCompletedEvent;
+import tz.co.twende.common.event.ride.BookingRequestedEvent;
 import tz.co.twende.common.event.ride.RideCompletedEvent;
 import tz.co.twende.common.event.ride.RideStatusUpdatedEvent;
 import tz.co.twende.common.event.subscription.SubscriptionExpiredEvent;
@@ -27,6 +29,7 @@ public class NotificationEventConsumer {
     private final SubscriptionNotificationHandler subscriptionHandler;
     private final LoyaltyNotificationHandler loyaltyHandler;
     private final DirectNotificationHandler directHandler;
+    private final BookingNotificationHandler bookingHandler;
 
     @KafkaListener(
             topics = KafkaConfig.TOPIC_RIDES_STATUS_UPDATED,
@@ -116,6 +119,32 @@ public class NotificationEventConsumer {
             directHandler.handle(event);
         } catch (Exception e) {
             log.error("Error processing direct notification: {}", e.getMessage(), e);
+        }
+    }
+
+    @KafkaListener(
+            topics = KafkaConfig.TOPIC_BOOKING_REQUESTED,
+            groupId = "notification-service-group")
+    @Async("notificationExecutor")
+    public void onBookingRequested(BookingRequestedEvent event) {
+        try {
+            log.debug("Received booking requested: {}", event.getEventId());
+            bookingHandler.handleBookingRequested(event);
+        } catch (Exception e) {
+            log.error("Error processing booking requested: {}", e.getMessage(), e);
+        }
+    }
+
+    @KafkaListener(
+            topics = KafkaConfig.TOPIC_BOOKING_COMPLETED,
+            groupId = "notification-service-group")
+    @Async("notificationExecutor")
+    public void onBookingCompleted(BookingCompletedEvent event) {
+        try {
+            log.debug("Received booking completed: {}", event.getEventId());
+            bookingHandler.handleBookingCompleted(event);
+        } catch (Exception e) {
+            log.error("Error processing booking completed: {}", e.getMessage(), e);
         }
     }
 }

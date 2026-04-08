@@ -18,4 +18,8 @@ public class EstimateResponse {
     private int durationSeconds;
     private BigDecimal surgeMultiplier;
     private FareBreakdown fareBreakdown;
+
+    // Flat fee fields
+    private BigDecimal twendeFee;
+    private BigDecimal driverEarnings;
 }

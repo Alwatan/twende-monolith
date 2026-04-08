@@ -42,4 +42,10 @@ public class EstimateRequest {
     private BigDecimal dropoffLng;
 
     @NotNull private UUID cityId;
+
+    // Charter fields (optional)
+    private String serviceCategory;
+    private String qualityTier;
+    private String tripDirection;
+    private BigDecimal estimatedHours;
 }

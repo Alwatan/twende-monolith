@@ -53,4 +53,14 @@ public class VehicleTypeConfig extends BaseEntity {
     @Column(nullable = false, columnDefinition = "TEXT[]")
     @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.ARRAY)
     private String[] requiredDocs;
+
+    // Charter fields
+    @Column(length = 20)
+    private String qualityTier;
+
+    @Column(precision = 12, scale = 2)
+    private BigDecimal perHour;
+
+    @Column(nullable = false, precision = 12, scale = 2)
+    private BigDecimal qualityTierSurcharge = BigDecimal.ZERO;
 }

@@ -18,4 +18,9 @@ public class VehicleTypeConfigDto {
     private BigDecimal minimumFare;
     private BigDecimal cancellationFee;
     private BigDecimal surgeMultiplierCap;
+
+    // Charter fields
+    private BigDecimal perHour;
+    private String qualityTier;
+    private BigDecimal qualityTierSurcharge;
 }

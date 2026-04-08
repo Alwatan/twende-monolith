@@ -273,9 +273,10 @@ class RideServiceIntegrationTest {
                         + " pickup_lat, pickup_lng, pickup_address, dropoff_lat, dropoff_lng,"
                         + " dropoff_address, estimated_fare, fare_boost_amount, currency_code,"
                         + " free_ride, driver_rejection_count, trip_start_otp_attempts,"
+                        + " service_category, booking_type, payment_timing,"
                         + " requested_at, created_at, updated_at)"
-                        + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now(),"
-                        + " now(), now())",
+                        + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
+                        + " now(), now(), now())",
                 rideId,
                 countryCode,
                 riderId,
@@ -292,7 +293,10 @@ class RideServiceIntegrationTest {
                 "TZS",
                 false,
                 0,
-                0);
+                0,
+                "RIDE",
+                "ON_DEMAND",
+                "AT_END");
         return rideId;
     }
 }

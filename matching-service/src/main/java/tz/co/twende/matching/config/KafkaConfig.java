@@ -14,4 +14,7 @@ public class KafkaConfig {
             "twende.drivers.offer-notification";
     public static final String TOPIC_RIDES_NO_DRIVER_FOUND = "twende.rides.no-driver-found";
     public static final String TOPIC_DRIVERS_STATUS_UPDATED = "twende.drivers.status-updated";
+
+    public static final String TOPIC_BOOKING_REQUESTED = "twende.rides.booking-requested";
+    public static final String TOPIC_BOOKING_COMPLETED = "twende.rides.booking-completed";
 }

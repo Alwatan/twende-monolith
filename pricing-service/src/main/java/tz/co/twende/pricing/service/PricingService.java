@@ -61,6 +61,14 @@ public class PricingService {
                             + request.getVehicleType());
         }
 
+        // Check if this is a charter request
+        boolean isCharter = "CHARTER".equals(request.getServiceCategory());
+
+        if (isCharter) {
+            return calculateCharterEstimate(
+                    request, route, vehicleConfig, request.getCountryCode());
+        }
+
         // 4. Get surge from Redis
         BigDecimal demandSurge =
                 surgeService.getSurge(request.getCountryCode(), request.getVehicleType());
@@ -98,6 +106,71 @@ public class PricingService {
                 .durationSeconds(route.getDurationSeconds())
                 .surgeMultiplier(effectiveSurge)
                 .fareBreakdown(fareResult.breakdown)
+                .build();
+    }
+
+    EstimateResponse calculateCharterEstimate(
+            EstimateRequest request,
+            RouteDto route,
+            VehicleTypeConfigDto vehicleConfig,
+            String countryCode) {
+        BigDecimal distanceKm =
+                BigDecimal.valueOf(route.getDistanceMetres())
+                        .divide(METRES_TO_KM, 4, RoundingMode.HALF_UP);
+
+        BigDecimal baseFare = vehicleConfig.getBaseFare();
+        BigDecimal distanceFare = distanceKm.multiply(vehicleConfig.getPerKm());
+
+        // Hourly fare for charter
+        BigDecimal estimatedHours =
+                request.getEstimatedHours() != null ? request.getEstimatedHours() : BigDecimal.ONE;
+        BigDecimal perHour =
+                vehicleConfig.getPerHour() != null ? vehicleConfig.getPerHour() : BigDecimal.ZERO;
+        BigDecimal hourlyFare = estimatedHours.multiply(perHour);
+
+        // Quality tier surcharge
+        BigDecimal qualityTierSurcharge =
+                vehicleConfig.getQualityTierSurcharge() != null
+                        ? vehicleConfig.getQualityTierSurcharge()
+                        : BigDecimal.ZERO;
+
+        BigDecimal totalFare = baseFare.add(distanceFare).add(hourlyFare).add(qualityTierSurcharge);
+
+        // Round trip: 2x distance with 10% discount on return leg
+        if ("ROUND_TRIP".equals(request.getTripDirection())) {
+            BigDecimal returnDistanceFare =
+                    distanceFare.multiply(new BigDecimal("0.90")); // 10% discount
+            totalFare = totalFare.add(returnDistanceFare);
+        }
+
+        // Round to TZS
+        totalFare = totalFare.setScale(TZS_SCALE, RoundingMode.HALF_UP);
+        baseFare = baseFare.setScale(TZS_SCALE, RoundingMode.HALF_UP);
+        distanceFare = distanceFare.setScale(TZS_SCALE, RoundingMode.HALF_UP);
+        hourlyFare = hourlyFare.setScale(TZS_SCALE, RoundingMode.HALF_UP);
+        qualityTierSurcharge = qualityTierSurcharge.setScale(TZS_SCALE, RoundingMode.HALF_UP);
+
+        FareBreakdown breakdown =
+                FareBreakdown.builder()
+                        .baseFare(baseFare)
+                        .distanceFare(distanceFare)
+                        .timeFare(BigDecimal.ZERO)
+                        .surgeFare(BigDecimal.ZERO)
+                        .airportSurcharge(BigDecimal.ZERO)
+                        .minimumFareApplied(false)
+                        .charterHourlyFare(hourlyFare)
+                        .qualityTierSurcharge(qualityTierSurcharge)
+                        .build();
+
+        String currency = getCurrency(countryCode);
+        return EstimateResponse.builder()
+                .estimatedFare(totalFare)
+                .currency(currency)
+                .displayFare(formatFare(totalFare, currency))
+                .distanceMetres(route.getDistanceMetres())
+                .durationSeconds(route.getDurationSeconds())
+                .surgeMultiplier(BigDecimal.ONE)
+                .fareBreakdown(breakdown)
                 .build();
     }
 

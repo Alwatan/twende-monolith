@@ -14,4 +14,7 @@ public class KafkaConfig {
     public static final String TOPIC_SUBSCRIPTIONS_EXPIRED = "twende.subscriptions.expired";
     public static final String TOPIC_LOYALTY_FREE_RIDE_EARNED = "twende.loyalty.free-ride-earned";
     public static final String TOPIC_NOTIFICATIONS_SEND = "twende.notifications.send";
+
+    public static final String TOPIC_BOOKING_REQUESTED = "twende.rides.booking-requested";
+    public static final String TOPIC_BOOKING_COMPLETED = "twende.rides.booking-completed";
 }

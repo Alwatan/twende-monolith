@@ -33,6 +33,11 @@ public class VehicleTypeConfigDto implements Serializable {
 
     private String[] requiredDocs;
 
+    // Charter fields
+    private String qualityTier;
+    private BigDecimal perHour;
+    private BigDecimal qualityTierSurcharge;
+
     private Instant createdAt;
     private Instant updatedAt;
 }

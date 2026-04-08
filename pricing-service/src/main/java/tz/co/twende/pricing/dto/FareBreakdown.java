@@ -17,4 +17,8 @@ public class FareBreakdown {
     private BigDecimal surgeFare;
     private BigDecimal airportSurcharge;
     private boolean minimumFareApplied;
+
+    // Charter fields
+    private BigDecimal charterHourlyFare;
+    private BigDecimal qualityTierSurcharge;
 }

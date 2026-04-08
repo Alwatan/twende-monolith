@@ -409,6 +409,200 @@ class RideServiceTest {
                         riderId, cityId, RideStatus.COMPLETED, PageRequest.of(0, 10));
     }
 
+    // ---- Charter booking tests ----
+
+    @Test
+    void givenCharterRequest_whenCreateRide_thenBookingRequestedEventPublished() {
+        UUID riderId = UUID.randomUUID();
+        CreateRideRequest request = new CreateRideRequest();
+        request.setVehicleType("MINIBUS_STANDARD");
+        request.setPickupLat(BigDecimal.valueOf(-6.7728));
+        request.setPickupLng(BigDecimal.valueOf(39.2310));
+        request.setPickupAddress("Kariakoo Market");
+        request.setDropoffLat(BigDecimal.valueOf(-6.8160));
+        request.setDropoffLng(BigDecimal.valueOf(39.2803));
+        request.setDropoffAddress("Mlimani City");
+        request.setServiceCategory("CHARTER");
+        request.setQualityTier("STANDARD");
+        request.setScheduledPickupAt(Instant.now().plus(2, ChronoUnit.DAYS));
+        request.setTripDirection("ONE_WAY");
+
+        when(locationClient.isInRestrictedZone(any(), any())).thenReturn(false);
+        EstimateDto estimate = new EstimateDto();
+        estimate.setEstimatedFare(BigDecimal.valueOf(50000));
+        estimate.setCurrency("TZS");
+        estimate.setDistanceMetres(20000);
+        estimate.setDurationSeconds(1800);
+        when(pricingClient.getFareEstimate(any(), any(), any(), any(), any(), any()))
+                .thenReturn(estimate);
+        when(loyaltyClient.findApplicableOffer(any(), any(), any())).thenReturn(null);
+        when(rideRepository.save(any(Ride.class)))
+                .thenAnswer(
+                        invocation -> {
+                            Ride r = invocation.getArgument(0);
+                            if (r.getId() == null) r.setId(UUID.randomUUID());
+                            return r;
+                        });
+        when(statusEventRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        Ride ride = rideService.createRide(riderId, "TZ", request);
+
+        assertEquals("CHARTER", ride.getServiceCategory());
+        assertEquals("SCHEDULED", ride.getBookingType());
+        assertEquals("STANDARD", ride.getQualityTier());
+        assertNotNull(ride.getScheduledPickupAt());
+        assertNull(ride.getMatchingTimeoutAt());
+        verify(eventPublisher).publishBookingRequested(any());
+        verify(eventPublisher, never()).publishRideRequested(any());
+    }
+
+    @Test
+    void givenCharterRequestMissingScheduledPickupAt_whenCreateRide_thenThrowBadRequest() {
+        UUID riderId = UUID.randomUUID();
+        CreateRideRequest request = new CreateRideRequest();
+        request.setVehicleType("MINIBUS_STANDARD");
+        request.setPickupLat(BigDecimal.valueOf(-6.7728));
+        request.setPickupLng(BigDecimal.valueOf(39.2310));
+        request.setPickupAddress("Kariakoo");
+        request.setDropoffLat(BigDecimal.valueOf(-6.8160));
+        request.setDropoffLng(BigDecimal.valueOf(39.2803));
+        request.setDropoffAddress("Dest");
+        request.setServiceCategory("CHARTER");
+        request.setQualityTier("STANDARD");
+        // no scheduledPickupAt
+
+        when(locationClient.isInRestrictedZone(any(), any())).thenReturn(false);
+        EstimateDto estimate = new EstimateDto();
+        estimate.setEstimatedFare(BigDecimal.valueOf(50000));
+        estimate.setCurrency("TZS");
+        when(pricingClient.getFareEstimate(any(), any(), any(), any(), any(), any()))
+                .thenReturn(estimate);
+        when(loyaltyClient.findApplicableOffer(any(), any(), any())).thenReturn(null);
+
+        assertThrows(
+                BadRequestException.class, () -> rideService.createRide(riderId, "TZ", request));
+    }
+
+    @Test
+    void givenCharterRequestPastDate_whenCreateRide_thenThrowBadRequest() {
+        UUID riderId = UUID.randomUUID();
+        CreateRideRequest request = new CreateRideRequest();
+        request.setVehicleType("MINIBUS_STANDARD");
+        request.setPickupLat(BigDecimal.valueOf(-6.7728));
+        request.setPickupLng(BigDecimal.valueOf(39.2310));
+        request.setPickupAddress("Kariakoo");
+        request.setDropoffLat(BigDecimal.valueOf(-6.8160));
+        request.setDropoffLng(BigDecimal.valueOf(39.2803));
+        request.setDropoffAddress("Dest");
+        request.setServiceCategory("CHARTER");
+        request.setQualityTier("LUXURY");
+        request.setScheduledPickupAt(Instant.now().minus(1, ChronoUnit.DAYS));
+
+        when(locationClient.isInRestrictedZone(any(), any())).thenReturn(false);
+        EstimateDto estimate = new EstimateDto();
+        estimate.setEstimatedFare(BigDecimal.valueOf(50000));
+        estimate.setCurrency("TZS");
+        when(pricingClient.getFareEstimate(any(), any(), any(), any(), any(), any()))
+                .thenReturn(estimate);
+        when(loyaltyClient.findApplicableOffer(any(), any(), any())).thenReturn(null);
+
+        assertThrows(
+                BadRequestException.class, () -> rideService.createRide(riderId, "TZ", request));
+    }
+
+    @Test
+    void givenCharterRequestMissingQualityTier_whenCreateRide_thenThrowBadRequest() {
+        UUID riderId = UUID.randomUUID();
+        CreateRideRequest request = new CreateRideRequest();
+        request.setVehicleType("MINIBUS_STANDARD");
+        request.setPickupLat(BigDecimal.valueOf(-6.7728));
+        request.setPickupLng(BigDecimal.valueOf(39.2310));
+        request.setPickupAddress("Kariakoo");
+        request.setDropoffLat(BigDecimal.valueOf(-6.8160));
+        request.setDropoffLng(BigDecimal.valueOf(39.2803));
+        request.setDropoffAddress("Dest");
+        request.setServiceCategory("CHARTER");
+        request.setScheduledPickupAt(Instant.now().plus(2, ChronoUnit.DAYS));
+        // no qualityTier
+
+        when(locationClient.isInRestrictedZone(any(), any())).thenReturn(false);
+        EstimateDto estimate = new EstimateDto();
+        estimate.setEstimatedFare(BigDecimal.valueOf(50000));
+        estimate.setCurrency("TZS");
+        when(pricingClient.getFareEstimate(any(), any(), any(), any(), any(), any()))
+                .thenReturn(estimate);
+        when(loyaltyClient.findApplicableOffer(any(), any(), any())).thenReturn(null);
+
+        assertThrows(
+                BadRequestException.class, () -> rideService.createRide(riderId, "TZ", request));
+    }
+
+    @Test
+    void givenCharterRideInProgress_whenCompleteTrip_thenBookingCompletedEventPublished() {
+        UUID rideId = UUID.randomUUID();
+        UUID driverId = UUID.randomUUID();
+        Ride ride = createRideWithStatus(rideId, RideStatus.IN_PROGRESS);
+        ride.setDriverId(driverId);
+        ride.setServiceCategory("CHARTER");
+        ride.setEstimatedFare(BigDecimal.valueOf(50000));
+        ride.setDistanceMetres(20000);
+        ride.setDurationSeconds(1800);
+
+        EstimateDto finalCalc = new EstimateDto();
+        finalCalc.setEstimatedFare(BigDecimal.valueOf(52000));
+
+        when(rideRepository.findByIdAndDriverId(rideId, driverId)).thenReturn(Optional.of(ride));
+        when(pricingClient.calculateFinalFare(any(), any(), any(), any())).thenReturn(finalCalc);
+        when(rideRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(statusEventRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        Ride result = rideService.completeTrip(rideId, driverId);
+
+        assertEquals(RideStatus.COMPLETED, result.getStatus());
+        verify(eventPublisher).publishBookingCompleted(any());
+        verify(eventPublisher, never()).publishRideCompleted(any());
+    }
+
+    @Test
+    void givenRegularRideRequest_whenCreateRide_thenRideRequestedEventPublished() {
+        UUID riderId = UUID.randomUUID();
+        CreateRideRequest request = new CreateRideRequest();
+        request.setVehicleType("BAJAJ");
+        request.setPickupLat(BigDecimal.valueOf(-6.7728));
+        request.setPickupLng(BigDecimal.valueOf(39.2310));
+        request.setPickupAddress("Kariakoo");
+        request.setDropoffLat(BigDecimal.valueOf(-6.8160));
+        request.setDropoffLng(BigDecimal.valueOf(39.2803));
+        request.setDropoffAddress("Dest");
+        // No serviceCategory — defaults to RIDE
+
+        when(locationClient.isInRestrictedZone(any(), any())).thenReturn(false);
+        EstimateDto estimate = new EstimateDto();
+        estimate.setEstimatedFare(BigDecimal.valueOf(3500));
+        estimate.setCurrency("TZS");
+        estimate.setDistanceMetres(5000);
+        estimate.setDurationSeconds(600);
+        when(pricingClient.getFareEstimate(any(), any(), any(), any(), any(), any()))
+                .thenReturn(estimate);
+        when(loyaltyClient.findApplicableOffer(any(), any(), any())).thenReturn(null);
+        when(rideRepository.save(any(Ride.class)))
+                .thenAnswer(
+                        invocation -> {
+                            Ride r = invocation.getArgument(0);
+                            if (r.getId() == null) r.setId(UUID.randomUUID());
+                            return r;
+                        });
+        when(statusEventRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        Ride ride = rideService.createRide(riderId, "TZ", request);
+
+        assertEquals("RIDE", ride.getServiceCategory());
+        assertEquals("ON_DEMAND", ride.getBookingType());
+        assertNotNull(ride.getMatchingTimeoutAt());
+        verify(eventPublisher).publishRideRequested(any());
+        verify(eventPublisher, never()).publishBookingRequested(any());
+    }
+
     private Ride createRideWithStatus(UUID rideId, RideStatus status) {
         Ride ride = new Ride();
         ride.setId(rideId);

@@ -107,7 +107,26 @@ public class RideService {
             }
         }
 
-        // 4. Create Ride entity
+        // 4. Determine service category (defaults to RIDE)
+        String serviceCategory =
+                request.getServiceCategory() != null ? request.getServiceCategory() : "RIDE";
+        boolean isCharter = "CHARTER".equals(serviceCategory);
+
+        // Validate charter-specific fields
+        if (isCharter) {
+            if (request.getScheduledPickupAt() == null) {
+                throw new BadRequestException("scheduledPickupAt is required for charter bookings");
+            }
+            if (request.getScheduledPickupAt().isBefore(Instant.now())) {
+                throw new BadRequestException(
+                        "scheduledPickupAt must be in the future for charter bookings");
+            }
+            if (request.getQualityTier() == null || request.getQualityTier().isBlank()) {
+                throw new BadRequestException("qualityTier is required for charter bookings");
+            }
+        }
+
+        // 5. Create Ride entity
         Ride ride = new Ride();
         ride.setRiderId(riderId);
         ride.setCountryCode(countryCode);
@@ -136,9 +155,23 @@ public class RideService {
         ride.setDistanceMetres(distanceMetres);
         ride.setDurationSeconds(durationSeconds);
 
+        // Charter / scheduled booking fields
+        ride.setServiceCategory(serviceCategory);
+        ride.setBookingType(isCharter ? "SCHEDULED" : "ON_DEMAND");
+        ride.setScheduledPickupAt(request.getScheduledPickupAt());
+        ride.setTripDirection(request.getTripDirection());
+        ride.setQualityTier(request.getQualityTier());
+        ride.setReturnPickupAt(request.getReturnPickupAt());
+        ride.setPaymentTiming(
+                request.getPaymentTiming() != null ? request.getPaymentTiming() : "AT_END");
+
         Instant now = Instant.now();
         ride.setRequestedAt(now);
-        ride.setMatchingTimeoutAt(now.plus(MATCHING_TIMEOUT_MINUTES, ChronoUnit.MINUTES));
+
+        // Charter bookings don't use the matching timeout since they use marketplace model
+        if (!isCharter) {
+            ride.setMatchingTimeoutAt(now.plus(MATCHING_TIMEOUT_MINUTES, ChronoUnit.MINUTES));
+        }
 
         ride = rideRepository.save(ride);
 
@@ -147,14 +180,19 @@ public class RideService {
             loyaltyClient.redeemOffer(freeRideOfferId, ride.getId());
         }
 
-        // 5. Log status event
+        // 6. Log status event
         logStatusEvent(ride, null, RideStatus.REQUESTED, riderId, "RIDER");
 
-        // 6. Publish RideRequestedEvent
-        eventPublisher.publishRideRequested(ride);
+        // 7. Publish appropriate event based on service category
+        if (isCharter) {
+            eventPublisher.publishBookingRequested(ride);
+        } else {
+            eventPublisher.publishRideRequested(ride);
+        }
 
         log.info(
-                "Created ride {} for rider {} with estimated fare {}",
+                "Created {} {} for rider {} with estimated fare {}",
+                serviceCategory,
                 ride.getId(),
                 riderId,
                 estimatedFare);
@@ -298,7 +336,13 @@ public class RideService {
         ride = rideRepository.save(ride);
 
         logStatusEvent(ride, previousStatus, RideStatus.COMPLETED, driverId, "DRIVER");
-        eventPublisher.publishRideCompleted(ride);
+
+        // Publish appropriate completion event based on service category
+        if ("CHARTER".equals(ride.getServiceCategory())) {
+            eventPublisher.publishBookingCompleted(ride);
+        } else {
+            eventPublisher.publishRideCompleted(ride);
+        }
         eventPublisher.publishStatusUpdated(ride, previousStatus, RideStatus.COMPLETED);
 
         log.info("Ride {} completed with final fare {}", rideId, finalFare);

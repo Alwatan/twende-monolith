@@ -4,6 +4,7 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -37,4 +38,13 @@ public class CreateRideRequest {
     @NotBlank private String dropoffAddress;
 
     private UUID cityId;
+
+    // Charter / Scheduled booking fields (optional, defaults to RIDE/ON_DEMAND)
+    private String serviceCategory;
+    private String bookingType;
+    private Instant scheduledPickupAt;
+    private String tripDirection;
+    private String qualityTier;
+    private Instant returnPickupAt;
+    private String paymentTiming;
 }

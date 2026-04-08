@@ -264,4 +264,167 @@ class PricingServiceTest {
         // 1.5 * 1.3 = 1.95 < 2.5 cap
         assertThat(result).isEqualByComparingTo(new BigDecimal("1.95"));
     }
+
+    // ---- Charter pricing tests ----
+
+    private VehicleTypeConfigDto minibusStandardConfig() {
+        return VehicleTypeConfigDto.builder()
+                .vehicleType("MINIBUS_STANDARD")
+                .baseFare(new BigDecimal("50000"))
+                .perKm(new BigDecimal("1500"))
+                .perMinute(BigDecimal.ZERO)
+                .minimumFare(new BigDecimal("50000"))
+                .cancellationFee(new BigDecimal("10000"))
+                .surgeMultiplierCap(new BigDecimal("2.0"))
+                .perHour(new BigDecimal("15000"))
+                .qualityTier("STANDARD")
+                .qualityTierSurcharge(BigDecimal.ZERO)
+                .build();
+    }
+
+    private VehicleTypeConfigDto minibusLuxuryConfig() {
+        return VehicleTypeConfigDto.builder()
+                .vehicleType("MINIBUS_LUXURY")
+                .baseFare(new BigDecimal("80000"))
+                .perKm(new BigDecimal("2000"))
+                .perMinute(BigDecimal.ZERO)
+                .minimumFare(new BigDecimal("80000"))
+                .cancellationFee(new BigDecimal("15000"))
+                .surgeMultiplierCap(new BigDecimal("2.0"))
+                .perHour(new BigDecimal("20000"))
+                .qualityTier("LUXURY")
+                .qualityTierSurcharge(new BigDecimal("30000"))
+                .build();
+    }
+
+    @Test
+    void givenCharterOneWay_whenEstimate_thenCorrectFareCalculated() {
+        EstimateRequest request =
+                EstimateRequest.builder()
+                        .vehicleType("MINIBUS_STANDARD")
+                        .countryCode("TZ")
+                        .pickupLat(new BigDecimal("-6.7728"))
+                        .pickupLng(new BigDecimal("39.2310"))
+                        .dropoffLat(new BigDecimal("-6.8160"))
+                        .dropoffLng(new BigDecimal("39.2803"))
+                        .cityId(UUID.randomUUID())
+                        .serviceCategory("CHARTER")
+                        .qualityTier("STANDARD")
+                        .tripDirection("ONE_WAY")
+                        .estimatedHours(new BigDecimal("3"))
+                        .build();
+
+        RouteDto route = RouteDto.builder().distanceMetres(50000).durationSeconds(3600).build();
+
+        when(locationServiceClient.checkZones(any(), any(), any())).thenReturn(noZones());
+        when(locationServiceClient.getRoute(any(), any(), any(), any(), any())).thenReturn(route);
+        when(countryConfigClient.getVehicleTypeConfig("TZ", "MINIBUS_STANDARD"))
+                .thenReturn(minibusStandardConfig());
+
+        EstimateResponse response = pricingService.calculateEstimate(request);
+
+        // baseFare=50000 + distance=50*1500=75000 + hourly=3*15000=45000 + surcharge=0
+        // total = 170000
+        assertThat(response.getEstimatedFare()).isEqualByComparingTo(new BigDecimal("170000"));
+        assertThat(response.getSurgeMultiplier()).isEqualByComparingTo(BigDecimal.ONE);
+        assertThat(response.getFareBreakdown().getCharterHourlyFare())
+                .isEqualByComparingTo(new BigDecimal("45000"));
+        assertThat(response.getFareBreakdown().getQualityTierSurcharge())
+                .isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    void givenCharterRoundTrip_whenEstimate_thenReturnLegDiscounted() {
+        EstimateRequest request =
+                EstimateRequest.builder()
+                        .vehicleType("MINIBUS_STANDARD")
+                        .countryCode("TZ")
+                        .pickupLat(new BigDecimal("-6.7728"))
+                        .pickupLng(new BigDecimal("39.2310"))
+                        .dropoffLat(new BigDecimal("-6.8160"))
+                        .dropoffLng(new BigDecimal("39.2803"))
+                        .cityId(UUID.randomUUID())
+                        .serviceCategory("CHARTER")
+                        .qualityTier("STANDARD")
+                        .tripDirection("ROUND_TRIP")
+                        .estimatedHours(new BigDecimal("2"))
+                        .build();
+
+        RouteDto route = RouteDto.builder().distanceMetres(30000).durationSeconds(2400).build();
+
+        when(locationServiceClient.checkZones(any(), any(), any())).thenReturn(noZones());
+        when(locationServiceClient.getRoute(any(), any(), any(), any(), any())).thenReturn(route);
+        when(countryConfigClient.getVehicleTypeConfig("TZ", "MINIBUS_STANDARD"))
+                .thenReturn(minibusStandardConfig());
+
+        EstimateResponse response = pricingService.calculateEstimate(request);
+
+        // baseFare=50000, distance=30*1500=45000, hourly=2*15000=30000, surcharge=0
+        // oneWay=125000, return distance=45000*0.9=40500, total=165500
+        assertThat(response.getEstimatedFare()).isEqualByComparingTo(new BigDecimal("165500"));
+    }
+
+    @Test
+    void givenCharterLuxury_whenEstimate_thenQualityTierSurchargeAdded() {
+        EstimateRequest request =
+                EstimateRequest.builder()
+                        .vehicleType("MINIBUS_LUXURY")
+                        .countryCode("TZ")
+                        .pickupLat(new BigDecimal("-6.7728"))
+                        .pickupLng(new BigDecimal("39.2310"))
+                        .dropoffLat(new BigDecimal("-6.8160"))
+                        .dropoffLng(new BigDecimal("39.2803"))
+                        .cityId(UUID.randomUUID())
+                        .serviceCategory("CHARTER")
+                        .qualityTier("LUXURY")
+                        .tripDirection("ONE_WAY")
+                        .estimatedHours(new BigDecimal("2"))
+                        .build();
+
+        RouteDto route = RouteDto.builder().distanceMetres(20000).durationSeconds(1800).build();
+
+        when(locationServiceClient.checkZones(any(), any(), any())).thenReturn(noZones());
+        when(locationServiceClient.getRoute(any(), any(), any(), any(), any())).thenReturn(route);
+        when(countryConfigClient.getVehicleTypeConfig("TZ", "MINIBUS_LUXURY"))
+                .thenReturn(minibusLuxuryConfig());
+
+        EstimateResponse response = pricingService.calculateEstimate(request);
+
+        // baseFare=80000 + distance=20*2000=40000 + hourly=2*20000=40000 + surcharge=30000
+        // total = 190000
+        assertThat(response.getEstimatedFare()).isEqualByComparingTo(new BigDecimal("190000"));
+        assertThat(response.getFareBreakdown().getQualityTierSurcharge())
+                .isEqualByComparingTo(new BigDecimal("30000"));
+    }
+
+    @Test
+    void givenCharterNoEstimatedHours_whenEstimate_thenDefaultsToOneHour() {
+        EstimateRequest request =
+                EstimateRequest.builder()
+                        .vehicleType("MINIBUS_STANDARD")
+                        .countryCode("TZ")
+                        .pickupLat(new BigDecimal("-6.7728"))
+                        .pickupLng(new BigDecimal("39.2310"))
+                        .dropoffLat(new BigDecimal("-6.8160"))
+                        .dropoffLng(new BigDecimal("39.2803"))
+                        .cityId(UUID.randomUUID())
+                        .serviceCategory("CHARTER")
+                        .qualityTier("STANDARD")
+                        .tripDirection("ONE_WAY")
+                        // no estimatedHours
+                        .build();
+
+        RouteDto route = RouteDto.builder().distanceMetres(10000).durationSeconds(900).build();
+
+        when(locationServiceClient.checkZones(any(), any(), any())).thenReturn(noZones());
+        when(locationServiceClient.getRoute(any(), any(), any(), any(), any())).thenReturn(route);
+        when(countryConfigClient.getVehicleTypeConfig("TZ", "MINIBUS_STANDARD"))
+                .thenReturn(minibusStandardConfig());
+
+        EstimateResponse response = pricingService.calculateEstimate(request);
+
+        // baseFare=50000 + distance=10*1500=15000 + hourly=1*15000=15000 + surcharge=0
+        // total = 80000
+        assertThat(response.getEstimatedFare()).isEqualByComparingTo(new BigDecimal("80000"));
+    }
 }
