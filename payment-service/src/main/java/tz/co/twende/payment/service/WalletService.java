@@ -96,6 +96,45 @@ public class WalletService {
         return wallet;
     }
 
+    @Transactional
+    public DriverWallet debitFlatFee(
+            UUID driverId, BigDecimal amount, UUID referenceId, String description) {
+        DriverWallet wallet =
+                walletRepository
+                        .findByDriverId(driverId)
+                        .orElseGet(
+                                () -> {
+                                    // Create wallet with zero balance if it doesn't exist
+                                    DriverWallet newWallet =
+                                            new DriverWallet(driverId, "TZ", "TZS");
+                                    return walletRepository.save(newWallet);
+                                });
+
+        // Flat fee deductions may result in negative balance
+        // (deducted from future earnings if insufficient)
+        wallet.setBalance(wallet.getBalance().subtract(amount));
+        wallet.setUpdatedAt(java.time.Instant.now());
+        walletRepository.save(wallet);
+
+        WalletEntry entry =
+                new WalletEntry(
+                        driverId,
+                        "FLAT_FEE_DEDUCTION",
+                        amount,
+                        wallet.getBalance(),
+                        referenceId,
+                        description);
+        walletEntryRepository.save(entry);
+
+        log.info(
+                "Debited flat fee from wallet for driver={}, amount={}, newBalance={}",
+                driverId,
+                amount,
+                wallet.getBalance());
+
+        return wallet;
+    }
+
     @Transactional(readOnly = true)
     public DriverWallet getWallet(UUID driverId) {
         return walletRepository

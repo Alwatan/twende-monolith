@@ -855,18 +855,18 @@ to build each service, refer to the **"Implementation Steps"** section in that s
 - [ ] Prometheus metrics exposed at `/actuator/prometheus`
 - [ ] Zipkin tracing configured
 
-### Phase 7 — Flat Fee Revenue Model
-- [ ] `common-lib` — add enums: `ServiceCategory` (RIDE, CHARTER, CARGO), `RevenueModel`
+### Phase 7 — Flat Fee Revenue Model ✅
+- [x] `common-lib` — add enums: `ServiceCategory` (RIDE, CHARTER, CARGO), `RevenueModel`
       (SUBSCRIPTION, FLAT_FEE), `BookingType` (ON_DEMAND, SCHEDULED), `QualityTier`
       (STANDARD, LUXURY), `TripDirection` (ONE_WAY, ROUND_TRIP). Expand `VehicleType` enum
       with charter and cargo types. Add new Kafka events.
-- [ ] `country-config-service` — flat fee percentage config per country per service category,
+- [x] `country-config-service` — flat fee percentage config per country per service category,
       new vehicle type configs for charter/cargo with quality tiers
-- [ ] `subscription-service` — support flat fee as alternative to subscription. Driver
+- [x] `subscription-service` — support flat fee as alternative to subscription. Driver
       chooses revenue model. Ride drivers can switch monthly.
-- [ ] `driver-service` — `revenueModel` field on driver profile, service category registration,
+- [x] `driver-service` — `revenueModel` field on driver profile, service category registration,
       vehicle quality tier. Go-online validation: subscription OR flat fee required.
-- [ ] `payment-service` — flat fee deduction from driver wallet on trip completion for
+- [x] `payment-service` — flat fee deduction from driver wallet on trip completion for
       flat-fee drivers. Calculate Twende's cut = fare * flatFeePercentage.
 
 ### Phase 8 — Charter Transport

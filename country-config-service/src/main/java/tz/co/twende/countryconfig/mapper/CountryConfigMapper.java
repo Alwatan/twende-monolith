@@ -22,6 +22,7 @@ public interface CountryConfigMapper {
     @Mapping(target = "cities", ignore = true)
     @Mapping(target = "paymentMethods", ignore = true)
     @Mapping(target = "requiredDocuments", ignore = true)
+    @Mapping(target = "flatFeeConfigs", ignore = true)
     CountryConfigDto toDto(CountryConfig entity);
 
     VehicleTypeConfigDto toDto(VehicleTypeConfig entity);
@@ -39,6 +40,10 @@ public interface CountryConfigMapper {
     RequiredDriverDocumentDto toDto(RequiredDriverDocument entity);
 
     List<RequiredDriverDocumentDto> toDocumentDtoList(List<RequiredDriverDocument> entities);
+
+    FlatFeeConfigDto toDto(FlatFeeConfig entity);
+
+    List<FlatFeeConfigDto> toFlatFeeDtoList(List<FlatFeeConfig> entities);
 
     @Mapping(target = "code", ignore = true)
     @Mapping(target = "createdAt", ignore = true)

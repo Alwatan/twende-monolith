@@ -37,6 +37,7 @@ class CountryConfigServiceTest {
     @Mock private OperatingCityRepository operatingCityRepository;
     @Mock private PaymentMethodConfigRepository paymentMethodConfigRepository;
     @Mock private RequiredDriverDocumentRepository requiredDriverDocumentRepository;
+    @Mock private FlatFeeConfigRepository flatFeeConfigRepository;
     @Mock private RedisTemplate<String, Object> redisTemplate;
     @Mock private KafkaTemplate<String, Object> kafkaTemplate;
     @Mock private CountryConfigMapper mapper;
@@ -112,10 +113,12 @@ class CountryConfigServiceTest {
         when(operatingCityRepository.findByCountryCode("TZ")).thenReturn(List.of());
         when(paymentMethodConfigRepository.findByCountryCode("TZ")).thenReturn(List.of());
         when(requiredDriverDocumentRepository.findByCountryCode("TZ")).thenReturn(List.of());
+        when(flatFeeConfigRepository.findByCountryCodeAndActiveTrue("TZ")).thenReturn(List.of());
         when(mapper.toVehicleTypeDtoList(anyList())).thenReturn(List.of());
         when(mapper.toCityDtoList(anyList())).thenReturn(List.of());
         when(mapper.toPaymentMethodDtoList(anyList())).thenReturn(List.of());
         when(mapper.toDocumentDtoList(anyList())).thenReturn(List.of());
+        when(mapper.toFlatFeeDtoList(anyList())).thenReturn(List.of());
 
         CountryConfigDto result = countryConfigService.getConfig("TZ");
 
@@ -378,10 +381,13 @@ class CountryConfigServiceTest {
         when(operatingCityRepository.findByCountryCode(anyString())).thenReturn(List.of());
         when(paymentMethodConfigRepository.findByCountryCode(anyString())).thenReturn(List.of());
         when(requiredDriverDocumentRepository.findByCountryCode(anyString())).thenReturn(List.of());
+        when(flatFeeConfigRepository.findByCountryCodeAndActiveTrue(anyString()))
+                .thenReturn(List.of());
         when(mapper.toVehicleTypeDtoList(anyList())).thenReturn(List.of());
         when(mapper.toCityDtoList(anyList())).thenReturn(List.of());
         when(mapper.toPaymentMethodDtoList(anyList())).thenReturn(List.of());
         when(mapper.toDocumentDtoList(anyList())).thenReturn(List.of());
+        when(mapper.toFlatFeeDtoList(anyList())).thenReturn(List.of());
 
         List<CountryConfigDto> result = countryConfigService.getAllConfigs();
 

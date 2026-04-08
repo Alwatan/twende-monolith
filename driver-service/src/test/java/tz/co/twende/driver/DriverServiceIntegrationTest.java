@@ -291,8 +291,8 @@ class DriverServiceIntegrationTest {
     private void createDriver(UUID driverId, String fullName, String countryCode, String status) {
         jdbcTemplate.update(
                 "INSERT INTO drivers (id, full_name, country_code, status,"
-                        + " trip_count, created_at, updated_at) VALUES (?, ?, ?, ?,"
-                        + " 0, now(), now())",
+                        + " trip_count, revenue_model, created_at, updated_at)"
+                        + " VALUES (?, ?, ?, ?, 0, 'SUBSCRIPTION', now(), now())",
                 driverId,
                 fullName,
                 countryCode,

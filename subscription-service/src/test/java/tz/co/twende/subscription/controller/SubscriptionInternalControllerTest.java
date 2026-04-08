@@ -12,19 +12,22 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import tz.co.twende.common.response.ApiResponse;
+import tz.co.twende.subscription.dto.RevenueModelDto;
+import tz.co.twende.subscription.service.RevenueModelService;
 import tz.co.twende.subscription.service.SubscriptionService;
 
 @ExtendWith(MockitoExtension.class)
 class SubscriptionInternalControllerTest {
 
     @Mock private SubscriptionService subscriptionService;
+    @Mock private RevenueModelService revenueModelService;
 
     @InjectMocks private SubscriptionInternalController controller;
 
     @Test
-    void givenActiveSubscription_whenCheckActive_thenReturnsTrue() {
+    void givenActiveRevenueModel_whenCheckActive_thenReturnsTrue() {
         UUID driverId = UUID.randomUUID();
-        when(subscriptionService.hasActiveSubscription(driverId)).thenReturn(true);
+        when(revenueModelService.hasActiveRevenueModel(driverId)).thenReturn(true);
 
         ResponseEntity<ApiResponse<Boolean>> response = controller.hasActiveSubscription(driverId);
 
@@ -33,13 +36,32 @@ class SubscriptionInternalControllerTest {
     }
 
     @Test
-    void givenNoActiveSubscription_whenCheckActive_thenReturnsFalse() {
+    void givenNoActiveRevenueModel_whenCheckActive_thenReturnsFalse() {
         UUID driverId = UUID.randomUUID();
-        when(subscriptionService.hasActiveSubscription(driverId)).thenReturn(false);
+        when(revenueModelService.hasActiveRevenueModel(driverId)).thenReturn(false);
 
         ResponseEntity<ApiResponse<Boolean>> response = controller.hasActiveSubscription(driverId);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().getData()).isFalse();
+    }
+
+    @Test
+    void givenFlatFeeDriver_whenGetRevenueModel_thenReturnsDto() {
+        UUID driverId = UUID.randomUUID();
+        RevenueModelDto dto =
+                RevenueModelDto.builder()
+                        .driverId(driverId)
+                        .revenueModel("FLAT_FEE")
+                        .serviceCategory("RIDE")
+                        .hasActiveSubscription(false)
+                        .build();
+        when(revenueModelService.getRevenueModel(driverId)).thenReturn(dto);
+
+        ResponseEntity<ApiResponse<RevenueModelDto>> response =
+                controller.getRevenueModel(driverId);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().getData().getRevenueModel()).isEqualTo("FLAT_FEE");
     }
 }

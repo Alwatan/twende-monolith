@@ -36,6 +36,7 @@ public class CountryConfigService {
     private final OperatingCityRepository operatingCityRepository;
     private final PaymentMethodConfigRepository paymentMethodConfigRepository;
     private final RequiredDriverDocumentRepository requiredDriverDocumentRepository;
+    private final FlatFeeConfigRepository flatFeeConfigRepository;
     private final RedisTemplate<String, Object> redisTemplate;
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final CountryConfigMapper mapper;
@@ -77,6 +78,9 @@ public class CountryConfigService {
         dto.setRequiredDocuments(
                 mapper.toDocumentDtoList(
                         requiredDriverDocumentRepository.findByCountryCode(countryCode)));
+        dto.setFlatFeeConfigs(
+                mapper.toFlatFeeDtoList(
+                        flatFeeConfigRepository.findByCountryCodeAndActiveTrue(countryCode)));
 
         // 4. Cache with TTL
         redisTemplate.opsForValue().set(cacheKey, dto, CACHE_TTL);
@@ -111,6 +115,10 @@ public class CountryConfigService {
                             dto.setRequiredDocuments(
                                     mapper.toDocumentDtoList(
                                             requiredDriverDocumentRepository.findByCountryCode(
+                                                    config.getCode())));
+                            dto.setFlatFeeConfigs(
+                                    mapper.toFlatFeeDtoList(
+                                            flatFeeConfigRepository.findByCountryCodeAndActiveTrue(
                                                     config.getCode())));
                             return dto;
                         })

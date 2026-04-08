@@ -19,6 +19,7 @@ import tz.co.twende.common.exception.ResourceNotFoundException;
 import tz.co.twende.driver.client.SubscriptionClient;
 import tz.co.twende.driver.dto.request.UpdateDriverRequest;
 import tz.co.twende.driver.dto.response.DriverProfileDto;
+import tz.co.twende.driver.dto.response.DriverServiceCategoriesDto;
 import tz.co.twende.driver.dto.response.DriverSummaryDto;
 import tz.co.twende.driver.entity.DriverProfile;
 import tz.co.twende.driver.entity.DriverStatusLog;
@@ -123,7 +124,7 @@ class DriverServiceTest {
         assertThatThrownBy(
                         () -> driverService.updateStatus(driverId, DriverStatus.ONLINE_AVAILABLE))
                 .isInstanceOf(BadRequestException.class)
-                .hasMessageContaining("bundle");
+                .hasMessageContaining("bundle or register for flat fee");
     }
 
     @Test
@@ -251,6 +252,80 @@ class DriverServiceTest {
         DriverProfileDto result =
                 driverService.updateStatus(driverId, DriverStatus.ONLINE_AVAILABLE);
         assertThat(result.getStatus()).isEqualTo(DriverStatus.ONLINE_AVAILABLE);
+    }
+
+    @Test
+    void givenDriverWithServiceCategories_whenGetServiceCategories_thenReturnsDto() {
+        UUID driverId = UUID.randomUUID();
+        DriverProfile driver = createDriver(driverId, "John", "TZ");
+        driver.setRevenueModel("FLAT_FEE");
+        driver.setQualityTier("STANDARD");
+        driver.getServiceCategories().add("RIDE");
+        driver.getServiceCategories().add("CHARTER");
+
+        when(driverProfileRepository.findById(driverId)).thenReturn(Optional.of(driver));
+
+        DriverServiceCategoriesDto result = driverService.getServiceCategories(driverId);
+
+        assertThat(result.getDriverId()).isEqualTo(driverId);
+        assertThat(result.getRevenueModel()).isEqualTo("FLAT_FEE");
+        assertThat(result.getQualityTier()).isEqualTo("STANDARD");
+        assertThat(result.getServiceCategories()).containsExactlyInAnyOrder("RIDE", "CHARTER");
+    }
+
+    @Test
+    void givenDriverWithFlatFee_whenGoOnline_thenStatusIsOnlineAvailable() {
+        UUID driverId = UUID.randomUUID();
+        DriverProfile driver = createDriver(driverId, "Jane", "TZ");
+        driver.setStatus(DriverStatus.APPROVED);
+        driver.setRevenueModel("FLAT_FEE");
+        DriverProfileDto dto =
+                DriverProfileDto.builder()
+                        .id(driverId)
+                        .status(DriverStatus.ONLINE_AVAILABLE)
+                        .revenueModel("FLAT_FEE")
+                        .build();
+
+        when(driverProfileRepository.findById(driverId)).thenReturn(Optional.of(driver));
+        when(subscriptionClient.hasActiveSubscription(driverId)).thenReturn(true);
+        when(vehicleRepository.existsByDriverIdAndIsActiveTrue(driverId)).thenReturn(true);
+        when(driverProfileRepository.save(any())).thenReturn(driver);
+        when(statusLogRepository.save(any())).thenReturn(new DriverStatusLog());
+        when(driverMapper.toProfileDto(any())).thenReturn(dto);
+
+        DriverProfileDto result =
+                driverService.updateStatus(driverId, DriverStatus.ONLINE_AVAILABLE);
+        assertThat(result.getStatus()).isEqualTo(DriverStatus.ONLINE_AVAILABLE);
+    }
+
+    @Test
+    void givenDriverWithNoRevenueModel_whenGoOnline_thenThrowsBadRequest() {
+        UUID driverId = UUID.randomUUID();
+        DriverProfile driver = createDriver(driverId, "Bob", "TZ");
+        driver.setStatus(DriverStatus.APPROVED);
+
+        when(driverProfileRepository.findById(driverId)).thenReturn(Optional.of(driver));
+        when(subscriptionClient.hasActiveSubscription(driverId)).thenReturn(false);
+
+        assertThatThrownBy(
+                        () -> driverService.updateStatus(driverId, DriverStatus.ONLINE_AVAILABLE))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("bundle or register for flat fee");
+    }
+
+    @Test
+    void givenDriverWithEmptyCategories_whenGetServiceCategories_thenReturnsEmptySet() {
+        UUID driverId = UUID.randomUUID();
+        DriverProfile driver = createDriver(driverId, "Alice", "TZ");
+        driver.setRevenueModel("SUBSCRIPTION");
+
+        when(driverProfileRepository.findById(driverId)).thenReturn(Optional.of(driver));
+
+        DriverServiceCategoriesDto result = driverService.getServiceCategories(driverId);
+
+        assertThat(result.getDriverId()).isEqualTo(driverId);
+        assertThat(result.getRevenueModel()).isEqualTo("SUBSCRIPTION");
+        assertThat(result.getServiceCategories()).isEmpty();
     }
 
     private DriverProfile createDriver(UUID id, String fullName, String countryCode) {

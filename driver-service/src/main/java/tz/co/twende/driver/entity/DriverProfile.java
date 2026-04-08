@@ -2,6 +2,8 @@ package tz.co.twende.driver.entity;
 
 import jakarta.persistence.*;
 import java.time.Instant;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -40,4 +42,17 @@ public class DriverProfile extends BaseEntity {
     private int tripCount = 0;
 
     private Instant lastTripAt;
+
+    @Column(name = "revenue_model", nullable = false, length = 20)
+    private String revenueModel = "SUBSCRIPTION";
+
+    @Column(name = "quality_tier", length = 20)
+    private String qualityTier;
+
+    @ElementCollection
+    @CollectionTable(
+            name = "driver_service_categories",
+            joinColumns = @JoinColumn(name = "driver_id"))
+    @Column(name = "service_category")
+    private Set<String> serviceCategories = new HashSet<>();
 }

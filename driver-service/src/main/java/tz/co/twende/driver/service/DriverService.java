@@ -15,6 +15,7 @@ import tz.co.twende.common.exception.ResourceNotFoundException;
 import tz.co.twende.driver.client.SubscriptionClient;
 import tz.co.twende.driver.dto.request.UpdateDriverRequest;
 import tz.co.twende.driver.dto.response.DriverProfileDto;
+import tz.co.twende.driver.dto.response.DriverServiceCategoriesDto;
 import tz.co.twende.driver.dto.response.DriverSummaryDto;
 import tz.co.twende.driver.entity.DriverProfile;
 import tz.co.twende.driver.entity.DriverStatusLog;
@@ -83,9 +84,11 @@ public class DriverService {
             throw new BadRequestException("Driver must be approved to go online");
         }
 
-        boolean hasSubscription = subscriptionClient.hasActiveSubscription(driver.getId());
-        if (!hasSubscription) {
-            throw new BadRequestException("Purchase a bundle to go online");
+        // Checks both active subscription and flat fee registration
+        boolean hasActiveRevenueModel = subscriptionClient.hasActiveSubscription(driver.getId());
+        if (!hasActiveRevenueModel) {
+            throw new BadRequestException(
+                    "Purchase a bundle or register for flat fee to go online");
         }
 
         if (!vehicleRepository.existsByDriverIdAndIsActiveTrue(driver.getId())) {
@@ -145,6 +148,16 @@ public class DriverService {
         }
 
         return drivers.map(driverMapper::toProfileDto);
+    }
+
+    public DriverServiceCategoriesDto getServiceCategories(UUID driverId) {
+        DriverProfile driver = findById(driverId);
+        return DriverServiceCategoriesDto.builder()
+                .driverId(driver.getId())
+                .revenueModel(driver.getRevenueModel())
+                .qualityTier(driver.getQualityTier())
+                .serviceCategories(driver.getServiceCategories())
+                .build();
     }
 
     public DriverProfile findById(UUID driverId) {

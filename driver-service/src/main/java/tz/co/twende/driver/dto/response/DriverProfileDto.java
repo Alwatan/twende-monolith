@@ -1,6 +1,7 @@
 package tz.co.twende.driver.dto.response;
 
 import java.time.Instant;
+import java.util.Set;
 import java.util.UUID;
 import lombok.*;
 import tz.co.twende.common.enums.DriverStatus;
@@ -20,6 +21,9 @@ public class DriverProfileDto {
     private Instant approvedAt;
     private int tripCount;
     private Instant lastTripAt;
+    private String revenueModel;
+    private String qualityTier;
+    private Set<String> serviceCategories;
     private Instant createdAt;
     private Instant updatedAt;
 }

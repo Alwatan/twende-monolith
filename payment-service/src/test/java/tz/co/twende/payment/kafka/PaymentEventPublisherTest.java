@@ -51,6 +51,23 @@ class PaymentEventPublisherTest {
         verify(kafkaTemplate).send(anyString(), anyString(), any());
     }
 
+    @Test
+    void givenFlatFeeDeduction_whenPublishFlatFeeDeducted_thenSendsEvent() {
+        UUID driverId = UUID.randomUUID();
+        UUID rideId = UUID.randomUUID();
+
+        publisher.publishFlatFeeDeducted(
+                driverId,
+                rideId,
+                new BigDecimal("10000.00"),
+                new BigDecimal("15.00"),
+                new BigDecimal("1500.00"),
+                "TZ",
+                "TZS");
+
+        verify(kafkaTemplate).send(eq(KafkaConfig.TOPIC_PAYMENTS_COMPLETED), anyString(), any());
+    }
+
     private Transaction createTransaction() {
         Transaction tx = new Transaction();
         tx.setId(UUID.randomUUID());

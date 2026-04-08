@@ -1,5 +1,7 @@
 package tz.co.twende.payment.service;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -13,9 +15,12 @@ import tz.co.twende.common.enums.PaymentStatus;
 import tz.co.twende.common.exception.BadRequestException;
 import tz.co.twende.common.exception.ConflictException;
 import tz.co.twende.common.exception.ResourceNotFoundException;
+import tz.co.twende.payment.client.ConfigClient;
+import tz.co.twende.payment.client.SubscriptionServiceClient;
 import tz.co.twende.payment.dto.request.RidePaymentRequest;
 import tz.co.twende.payment.dto.request.SubscriptionPaymentRequest;
 import tz.co.twende.payment.dto.request.WithdrawRequest;
+import tz.co.twende.payment.dto.response.RevenueModelDto;
 import tz.co.twende.payment.entity.Transaction;
 import tz.co.twende.payment.kafka.PaymentEventPublisher;
 import tz.co.twende.payment.provider.*;
@@ -30,6 +35,8 @@ public class PaymentService {
     private final WalletService walletService;
     private final PaymentGateway paymentGateway;
     private final PaymentEventPublisher eventPublisher;
+    private final SubscriptionServiceClient subscriptionServiceClient;
+    private final ConfigClient configClient;
 
     @Transactional
     public Transaction processRidePayment(RidePaymentRequest request) {
@@ -78,6 +85,14 @@ public class PaymentService {
             transactionRepository.save(tx);
 
             eventPublisher.publishPaymentCompleted(tx);
+
+            // Check if driver is on flat fee and deduct Twende's cut
+            deductFlatFeeIfApplicable(
+                    request.getDriverId(),
+                    request.getRideId(),
+                    request.getAmount(),
+                    request.getCountryCode(),
+                    request.getCurrencyCode());
         }
 
         log.info(
@@ -87,6 +102,53 @@ public class PaymentService {
                 request.getAmount());
 
         return tx;
+    }
+
+    void deductFlatFeeIfApplicable(
+            UUID driverId,
+            UUID rideId,
+            BigDecimal fareAmount,
+            String countryCode,
+            String currencyCode) {
+        try {
+            RevenueModelDto revenueModel = subscriptionServiceClient.getRevenueModel(driverId);
+            if (revenueModel == null || !"FLAT_FEE".equals(revenueModel.getRevenueModel())) {
+                return;
+            }
+
+            String serviceCategory =
+                    revenueModel.getServiceCategory() != null
+                            ? revenueModel.getServiceCategory()
+                            : "RIDE";
+            BigDecimal percentage = configClient.getFlatFeePercentage(countryCode, serviceCategory);
+            BigDecimal feeAmount =
+                    fareAmount
+                            .multiply(percentage)
+                            .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+
+            walletService.debitFlatFee(
+                    driverId,
+                    feeAmount,
+                    rideId,
+                    "Flat fee deduction (" + percentage + "%) for ride " + rideId);
+
+            eventPublisher.publishFlatFeeDeducted(
+                    driverId, rideId, fareAmount, percentage, feeAmount, countryCode, currencyCode);
+
+            log.info(
+                    "Flat fee deducted: driverId={}, rideId={}, fare={}, fee={}",
+                    driverId,
+                    rideId,
+                    fareAmount,
+                    feeAmount);
+        } catch (Exception e) {
+            log.error(
+                    "Failed to deduct flat fee for driver={}, ride={}: {}",
+                    driverId,
+                    rideId,
+                    e.getMessage(),
+                    e);
+        }
     }
 
     @Transactional

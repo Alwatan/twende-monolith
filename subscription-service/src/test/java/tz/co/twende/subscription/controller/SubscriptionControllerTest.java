@@ -20,12 +20,14 @@ import tz.co.twende.common.response.ApiResponse;
 import tz.co.twende.subscription.dto.PurchaseRequest;
 import tz.co.twende.subscription.dto.SubscriptionDto;
 import tz.co.twende.subscription.dto.SubscriptionPlanDto;
+import tz.co.twende.subscription.service.RevenueModelService;
 import tz.co.twende.subscription.service.SubscriptionService;
 
 @ExtendWith(MockitoExtension.class)
 class SubscriptionControllerTest {
 
     @Mock private SubscriptionService subscriptionService;
+    @Mock private RevenueModelService revenueModelService;
 
     @InjectMocks private SubscriptionController controller;
 

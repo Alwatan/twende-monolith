@@ -162,4 +162,61 @@ class WalletServiceTest {
 
         assertThrows(ResourceNotFoundException.class, () -> walletService.getWallet(driverId));
     }
+
+    @Test
+    void givenExistingWallet_whenDebitFlatFee_thenBalanceDeductedAndEntryCreated() {
+        UUID driverId = UUID.randomUUID();
+        DriverWallet wallet = new DriverWallet(driverId, "TZ", "TZS");
+        wallet.setBalance(new BigDecimal("5000.00"));
+        when(walletRepository.findByDriverId(driverId)).thenReturn(Optional.of(wallet));
+        when(walletRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        walletService.debitFlatFee(
+                driverId,
+                new BigDecimal("750.00"),
+                UUID.randomUUID(),
+                "Flat fee deduction (15%) for ride");
+
+        assertEquals(new BigDecimal("4250.00"), wallet.getBalance());
+
+        ArgumentCaptor<WalletEntry> captor = ArgumentCaptor.forClass(WalletEntry.class);
+        verify(walletEntryRepository).save(captor.capture());
+        assertEquals("FLAT_FEE_DEDUCTION", captor.getValue().getType());
+        assertEquals(new BigDecimal("750.00"), captor.getValue().getAmount());
+    }
+
+    @Test
+    void givenInsufficientBalance_whenDebitFlatFee_thenNegativeBalanceAllowed() {
+        UUID driverId = UUID.randomUUID();
+        DriverWallet wallet = new DriverWallet(driverId, "TZ", "TZS");
+        wallet.setBalance(new BigDecimal("100.00"));
+        when(walletRepository.findByDriverId(driverId)).thenReturn(Optional.of(wallet));
+        when(walletRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        // Flat fee deduction allows negative balance
+        walletService.debitFlatFee(
+                driverId, new BigDecimal("500.00"), UUID.randomUUID(), "Flat fee deduction");
+
+        assertEquals(new BigDecimal("-400.00"), wallet.getBalance());
+        verify(walletRepository).save(wallet);
+        verify(walletEntryRepository).save(any(WalletEntry.class));
+    }
+
+    @Test
+    void givenNoWallet_whenDebitFlatFee_thenWalletCreatedWithNegativeBalance() {
+        UUID driverId = UUID.randomUUID();
+        when(walletRepository.findByDriverId(driverId)).thenReturn(Optional.empty());
+        when(walletRepository.save(any()))
+                .thenAnswer(
+                        inv -> {
+                            DriverWallet w = inv.getArgument(0);
+                            return w;
+                        });
+
+        walletService.debitFlatFee(
+                driverId, new BigDecimal("300.00"), UUID.randomUUID(), "Flat fee deduction");
+
+        verify(walletRepository, times(2)).save(any(DriverWallet.class));
+        verify(walletEntryRepository).save(any(WalletEntry.class));
+    }
 }

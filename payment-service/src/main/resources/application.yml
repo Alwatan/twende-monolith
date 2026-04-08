@@ -54,6 +54,8 @@ twende:
   services:
     country-config-service:
       url: ${COUNTRY_CONFIG_SERVICE_URL:http://localhost:8082}
+    subscription-service:
+      url: ${SUBSCRIPTION_SERVICE_URL:http://localhost:8090}
 
 logging:
   level:

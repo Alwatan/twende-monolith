@@ -18,6 +18,8 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import tz.co.twende.payment.client.ConfigClient;
+import tz.co.twende.payment.client.SubscriptionServiceClient;
 import tz.co.twende.payment.entity.DriverWallet;
 import tz.co.twende.payment.repository.CashDeclarationRepository;
 import tz.co.twende.payment.repository.DriverWalletRepository;
@@ -47,6 +49,8 @@ class PaymentServiceIntegrationTest {
     }
 
     @MockitoBean private KafkaTemplate<String, Object> kafkaTemplate;
+    @MockitoBean private SubscriptionServiceClient subscriptionServiceClient;
+    @MockitoBean private ConfigClient configClient;
 
     @Autowired private TransactionRepository transactionRepository;
     @Autowired private DriverWalletRepository walletRepository;

@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.*;
 import tz.co.twende.common.response.ApiResponse;
 import tz.co.twende.driver.dto.response.ActiveVehicleDto;
 import tz.co.twende.driver.dto.response.DriverProfileDto;
+import tz.co.twende.driver.dto.response.DriverServiceCategoriesDto;
 import tz.co.twende.driver.service.DriverService;
 import tz.co.twende.driver.service.VehicleService;
 
@@ -26,5 +27,11 @@ public class DriverInternalController {
     @GetMapping("/{id}/active-vehicle")
     public ResponseEntity<ApiResponse<ActiveVehicleDto>> getActiveVehicle(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.ok(vehicleService.getActiveVehicle(id)));
+    }
+
+    @GetMapping("/{id}/service-categories")
+    public ResponseEntity<ApiResponse<DriverServiceCategoriesDto>> getServiceCategories(
+            @PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(driverService.getServiceCategories(id)));
     }
 }

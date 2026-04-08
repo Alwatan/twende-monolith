@@ -11,9 +11,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import tz.co.twende.common.response.ApiResponse;
-import tz.co.twende.subscription.dto.PurchaseRequest;
-import tz.co.twende.subscription.dto.SubscriptionDto;
-import tz.co.twende.subscription.dto.SubscriptionPlanDto;
+import tz.co.twende.subscription.dto.*;
+import tz.co.twende.subscription.service.RevenueModelService;
 import tz.co.twende.subscription.service.SubscriptionService;
 
 @RestController
@@ -22,6 +21,7 @@ import tz.co.twende.subscription.service.SubscriptionService;
 public class SubscriptionController {
 
     private final SubscriptionService subscriptionService;
+    private final RevenueModelService revenueModelService;
 
     @GetMapping("/plans")
     public ResponseEntity<ApiResponse<List<SubscriptionPlanDto>>> getPlans(
@@ -59,5 +59,26 @@ public class SubscriptionController {
                         page, Math.min(size, 100), Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<SubscriptionDto> history = subscriptionService.getHistory(driverId, pageRequest);
         return ResponseEntity.ok(ApiResponse.ok(history));
+    }
+
+    @PostMapping("/revenue-model")
+    public ResponseEntity<ApiResponse<RevenueModelDto>> switchRevenueModel(
+            @RequestHeader("X-User-Id") UUID driverId,
+            @RequestHeader("X-Country-Code") String countryCode,
+            @Valid @RequestBody RevenueModelRequest request) {
+        RevenueModelDto result =
+                revenueModelService.switchRevenueModel(
+                        driverId,
+                        countryCode,
+                        request.getRevenueModel(),
+                        request.getServiceCategory());
+        return ResponseEntity.ok(ApiResponse.ok(result));
+    }
+
+    @GetMapping("/revenue-model/me")
+    public ResponseEntity<ApiResponse<RevenueModelDto>> getMyRevenueModel(
+            @RequestHeader("X-User-Id") UUID driverId) {
+        RevenueModelDto model = revenueModelService.getRevenueModel(driverId);
+        return ResponseEntity.ok(ApiResponse.ok(model));
     }
 }

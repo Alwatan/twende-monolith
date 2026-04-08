@@ -50,6 +50,8 @@ twende:
   services:
     payment:
       base-url: ${PAYMENT_SERVICE_URL:http://localhost:8089}
+    country-config-service:
+      url: ${COUNTRY_CONFIG_SERVICE_URL:http://localhost:8082}
 
 logging:
   level:

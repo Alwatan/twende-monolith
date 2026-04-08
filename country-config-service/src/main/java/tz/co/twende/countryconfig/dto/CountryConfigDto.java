@@ -59,4 +59,5 @@ public class CountryConfigDto implements Serializable {
     private List<OperatingCityDto> cities;
     private List<PaymentMethodConfigDto> paymentMethods;
     private List<RequiredDriverDocumentDto> requiredDocuments;
+    private List<FlatFeeConfigDto> flatFeeConfigs;
 }

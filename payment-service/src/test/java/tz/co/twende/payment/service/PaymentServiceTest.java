@@ -17,9 +17,12 @@ import tz.co.twende.common.enums.PaymentStatus;
 import tz.co.twende.common.exception.BadRequestException;
 import tz.co.twende.common.exception.ConflictException;
 import tz.co.twende.common.exception.ResourceNotFoundException;
+import tz.co.twende.payment.client.ConfigClient;
+import tz.co.twende.payment.client.SubscriptionServiceClient;
 import tz.co.twende.payment.dto.request.RidePaymentRequest;
 import tz.co.twende.payment.dto.request.SubscriptionPaymentRequest;
 import tz.co.twende.payment.dto.request.WithdrawRequest;
+import tz.co.twende.payment.dto.response.RevenueModelDto;
 import tz.co.twende.payment.entity.DriverWallet;
 import tz.co.twende.payment.entity.Transaction;
 import tz.co.twende.payment.kafka.PaymentEventPublisher;
@@ -34,6 +37,8 @@ class PaymentServiceTest {
     @Mock private WalletService walletService;
     @Mock private PaymentGateway paymentGateway;
     @Mock private PaymentEventPublisher eventPublisher;
+    @Mock private SubscriptionServiceClient subscriptionServiceClient;
+    @Mock private ConfigClient configClient;
 
     @InjectMocks private PaymentService paymentService;
 
@@ -219,5 +224,146 @@ class PaymentServiceTest {
         when(transactionRepository.findById(txId)).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class, () -> paymentService.getTransaction(txId));
+    }
+
+    @Test
+    void givenFlatFeeDriver_whenCashRideCompleted_thenFlatFeeDeducted() {
+        UUID driverId = UUID.randomUUID();
+        UUID rideId = UUID.randomUUID();
+        RidePaymentRequest request = new RidePaymentRequest();
+        request.setRideId(rideId);
+        request.setRiderId(UUID.randomUUID());
+        request.setDriverId(driverId);
+        request.setAmount(new BigDecimal("10000.00"));
+        request.setCurrencyCode("TZS");
+        request.setCountryCode("TZ");
+        request.setFreeRide(false);
+
+        RevenueModelDto revenueModel =
+                RevenueModelDto.builder()
+                        .driverId(driverId)
+                        .revenueModel("FLAT_FEE")
+                        .serviceCategory("RIDE")
+                        .build();
+
+        when(transactionRepository.existsByReferenceIdAndReferenceType(any(), eq("RIDE")))
+                .thenReturn(false);
+        when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(subscriptionServiceClient.getRevenueModel(driverId)).thenReturn(revenueModel);
+        when(configClient.getFlatFeePercentage("TZ", "RIDE")).thenReturn(new BigDecimal("15.00"));
+        when(walletService.debitFlatFee(any(), any(), any(), any())).thenReturn(new DriverWallet());
+
+        paymentService.processRidePayment(request);
+
+        verify(walletService)
+                .debitFlatFee(eq(driverId), eq(new BigDecimal("1500.00")), eq(rideId), anyString());
+        verify(eventPublisher)
+                .publishFlatFeeDeducted(
+                        eq(driverId),
+                        eq(rideId),
+                        eq(new BigDecimal("10000.00")),
+                        eq(new BigDecimal("15.00")),
+                        eq(new BigDecimal("1500.00")),
+                        eq("TZ"),
+                        eq("TZS"));
+    }
+
+    @Test
+    void givenSubscriptionDriver_whenCashRideCompleted_thenNoFlatFeeDeducted() {
+        UUID driverId = UUID.randomUUID();
+        RidePaymentRequest request = new RidePaymentRequest();
+        request.setRideId(UUID.randomUUID());
+        request.setRiderId(UUID.randomUUID());
+        request.setDriverId(driverId);
+        request.setAmount(new BigDecimal("5000.00"));
+        request.setCurrencyCode("TZS");
+        request.setCountryCode("TZ");
+        request.setFreeRide(false);
+
+        RevenueModelDto revenueModel =
+                RevenueModelDto.builder()
+                        .driverId(driverId)
+                        .revenueModel("SUBSCRIPTION")
+                        .serviceCategory("RIDE")
+                        .hasActiveSubscription(true)
+                        .build();
+
+        when(transactionRepository.existsByReferenceIdAndReferenceType(any(), eq("RIDE")))
+                .thenReturn(false);
+        when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(subscriptionServiceClient.getRevenueModel(driverId)).thenReturn(revenueModel);
+
+        paymentService.processRidePayment(request);
+
+        verify(walletService, never()).debitFlatFee(any(), any(), any(), any());
+    }
+
+    @Test
+    void givenFreeRide_whenCompleted_thenNoFlatFeeDeducted() {
+        RidePaymentRequest request = new RidePaymentRequest();
+        request.setRideId(UUID.randomUUID());
+        request.setRiderId(UUID.randomUUID());
+        request.setDriverId(UUID.randomUUID());
+        request.setAmount(new BigDecimal("5000.00"));
+        request.setCurrencyCode("TZS");
+        request.setCountryCode("TZ");
+        request.setFreeRide(true);
+
+        when(transactionRepository.existsByReferenceIdAndReferenceType(any(), eq("RIDE")))
+                .thenReturn(false);
+        when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(walletService.creditDriverWallet(any(), any(), any(), any(), any(), any()))
+                .thenReturn(new DriverWallet());
+
+        paymentService.processRidePayment(request);
+
+        // Free rides: no flat fee deduction, driver gets 100%
+        verify(walletService, never()).debitFlatFee(any(), any(), any(), any());
+        verify(subscriptionServiceClient, never()).getRevenueModel(any());
+    }
+
+    @Test
+    void givenNullRevenueModel_whenCashRideCompleted_thenNoFlatFeeDeducted() {
+        UUID driverId = UUID.randomUUID();
+        RidePaymentRequest request = new RidePaymentRequest();
+        request.setRideId(UUID.randomUUID());
+        request.setRiderId(UUID.randomUUID());
+        request.setDriverId(driverId);
+        request.setAmount(new BigDecimal("5000.00"));
+        request.setCurrencyCode("TZS");
+        request.setCountryCode("TZ");
+        request.setFreeRide(false);
+
+        when(transactionRepository.existsByReferenceIdAndReferenceType(any(), eq("RIDE")))
+                .thenReturn(false);
+        when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(subscriptionServiceClient.getRevenueModel(driverId)).thenReturn(null);
+
+        paymentService.processRidePayment(request);
+
+        verify(walletService, never()).debitFlatFee(any(), any(), any(), any());
+    }
+
+    @Test
+    void givenRevenueModelServiceError_whenCashRideCompleted_thenPaymentStillSucceeds() {
+        UUID driverId = UUID.randomUUID();
+        RidePaymentRequest request = new RidePaymentRequest();
+        request.setRideId(UUID.randomUUID());
+        request.setRiderId(UUID.randomUUID());
+        request.setDriverId(driverId);
+        request.setAmount(new BigDecimal("5000.00"));
+        request.setCurrencyCode("TZS");
+        request.setCountryCode("TZ");
+        request.setFreeRide(false);
+
+        when(transactionRepository.existsByReferenceIdAndReferenceType(any(), eq("RIDE")))
+                .thenReturn(false);
+        when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(subscriptionServiceClient.getRevenueModel(driverId))
+                .thenThrow(new RuntimeException("Service unavailable"));
+
+        // Should not throw -- flat fee deduction failure is caught
+        Transaction result = paymentService.processRidePayment(request);
+        assertEquals(PaymentStatus.COMPLETED, result.getStatus());
     }
 }
