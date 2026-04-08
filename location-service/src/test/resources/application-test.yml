@@ -1,0 +1,23 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+  flyway:
+    enabled: false
+  kafka:
+    bootstrap-servers: localhost:9092
+
+twende:
+  maps:
+    google:
+      api-key: test-api-key
+      enabled: true
+    osrm:
+      base-url: http://localhost:5000
+      enabled: false
+    nominatim:
+      base-url: http://localhost:8088
+      enabled: false
+  services:
+    country-config-service:
+      url: http://localhost:9999

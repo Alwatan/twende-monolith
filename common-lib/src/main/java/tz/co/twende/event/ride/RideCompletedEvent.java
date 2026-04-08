@@ -21,4 +21,8 @@ public class RideCompletedEvent extends KafkaEvent {
     private Instant completedAt;
     private boolean freeRide;
     private UUID freeRideOfferId;
+    private BigDecimal dropoffLat;
+    private BigDecimal dropoffLng;
+    private String dropoffAddress;
+    private UUID cityId;
 }

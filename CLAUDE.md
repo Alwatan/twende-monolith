@@ -809,31 +809,31 @@ below define the order and what services to build. For the step-by-step breakdow
 to build each service, refer to the **"Implementation Steps"** section in that service's
 `{service}/CLAUDE.md`.
 
-### Phase 1 — Foundation
-- [ ] `common-lib` — see `common-lib/CLAUDE.md` → Implementation Steps
-- [ ] `auth-service` — see `auth-service/CLAUDE.md` → Implementation Steps
-- [ ] `api-gateway` — see `api-gateway/CLAUDE.md` → Implementation Steps
+### Phase 1 — Foundation ✅
+- [x] `common-lib` — see `common-lib/CLAUDE.md` → Implementation Steps
+- [x] `auth-service` — see `auth-service/CLAUDE.md` → Implementation Steps
+- [x] `api-gateway` — see `api-gateway/CLAUDE.md` → Implementation Steps
 
-### Phase 2 — Core Data + Social Login
-- [ ] `auth-service` (enhancement) — add Google and Apple social login as alternative to OTP.
+### Phase 2 — Core Data + Social Login ✅
+- [x] `auth-service` (enhancement) — add Google and Apple social login as alternative to OTP.
       New `authProvider` field (PHONE, GOOGLE, APPLE) on AuthUser. Spring Security OAuth2
       Client for Google + Sign in with Apple (OIDC). Auto-populate fullName, email,
       profilePhotoUrl from social profile. Phone number prompt after social login if missing.
       Account linking by email. `UserRegisteredEvent` extended with profilePhotoUrl + email.
-- [ ] `country-config-service` — see `country-config-service/CLAUDE.md` → Implementation Steps
-- [ ] `user-service` — see `user-service/CLAUDE.md` → Implementation Steps
-- [ ] `driver-service` — see `driver-service/CLAUDE.md` → Implementation Steps
+- [x] `country-config-service` — see `country-config-service/CLAUDE.md` → Implementation Steps
+- [x] `user-service` — see `user-service/CLAUDE.md` → Implementation Steps
+- [x] `driver-service` — see `driver-service/CLAUDE.md` → Implementation Steps
 
-### Phase 3 — Ride Flow
-- [ ] `location-service` — see `location-service/CLAUDE.md` → Implementation Steps
-- [ ] `pricing-service` — see `pricing-service/CLAUDE.md` → Implementation Steps
-- [ ] `matching-service` — see `matching-service/CLAUDE.md` → Implementation Steps
-- [ ] `ride-service` — see `ride-service/CLAUDE.md` → Implementation Steps
-- [ ] `user-service` (enhancement) — destination suggestions: frequent destinations
+### Phase 3 — Ride Flow ✅
+- [x] `location-service` — see `location-service/CLAUDE.md` → Implementation Steps
+- [x] `pricing-service` — see `pricing-service/CLAUDE.md` → Implementation Steps
+- [x] `matching-service` — see `matching-service/CLAUDE.md` → Implementation Steps
+- [x] `ride-service` — see `ride-service/CLAUDE.md` → Implementation Steps
+- [x] `user-service` (enhancement) — destination suggestions: frequent destinations
       (precomputed from ride history, top 3 per city) + recent rides by region.
       New table `user_destination_stats`, Kafka consumer for `RideCompletedEvent`,
       new endpoint `GET /api/v1/users/me/suggestions?lat=&lng=`.
-- [ ] `ride-service` (enhancement) — internal endpoint `GET /internal/rides/history`
+- [x] `ride-service` (enhancement) — internal endpoint `GET /internal/rides/history`
       for user-service to fetch recent rides by userId + cityId.
 
 ### Phase 4 — Commerce

@@ -1,0 +1,34 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+  flyway:
+    enabled: false
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: matching-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "tz.co.twende.*"
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+twende:
+  matching:
+    offer-window-seconds: 15
+    max-radius-km: 10
+    expansion-interval-seconds: 30
+    max-expansion-batches: 3
+  services:
+    location-url: http://localhost:19999
+    driver-url: http://localhost:19998
+    rating-url: http://localhost:19997
+    ride-url: http://localhost:19996
+
+logging:
+  level:
+    tz.co.twende: DEBUG

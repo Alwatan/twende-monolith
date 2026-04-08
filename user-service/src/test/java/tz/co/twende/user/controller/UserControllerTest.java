@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -15,15 +16,18 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.ResponseEntity;
 import tz.co.twende.common.response.ApiResponse;
 import tz.co.twende.common.response.PagedResponse;
+import tz.co.twende.user.dto.DestinationSuggestionsDto;
 import tz.co.twende.user.dto.RideHistoryResponse;
 import tz.co.twende.user.dto.UpdateProfileRequest;
 import tz.co.twende.user.dto.UserProfileDto;
+import tz.co.twende.user.service.DestinationSuggestionService;
 import tz.co.twende.user.service.UserService;
 
 @ExtendWith(MockitoExtension.class)
 class UserControllerTest {
 
     @Mock private UserService userService;
+    @Mock private DestinationSuggestionService destinationSuggestionService;
     @InjectMocks private UserController userController;
 
     @Test
@@ -110,5 +114,25 @@ class UserControllerTest {
         assertTrue(response.getBody().isSuccess());
         assertEquals(0, response.getBody().getData().getTotalElements());
         verify(userService).getRideHistory(userId, 0, 20);
+    }
+
+    @Test
+    void givenValidCoordinates_whenGetSuggestions_thenReturnsSuggestions() {
+        UUID userId = UUID.randomUUID();
+        BigDecimal lat = new BigDecimal("-6.7924");
+        BigDecimal lng = new BigDecimal("39.2083");
+        DestinationSuggestionsDto suggestionsDto =
+                DestinationSuggestionsDto.builder().frequent(List.of()).recent(List.of()).build();
+        when(destinationSuggestionService.getSuggestions(userId, lat, lng))
+                .thenReturn(suggestionsDto);
+
+        ResponseEntity<ApiResponse<DestinationSuggestionsDto>> response =
+                userController.getSuggestions(userId, lat, lng);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertNotNull(response.getBody());
+        assertTrue(response.getBody().isSuccess());
+        assertNotNull(response.getBody().getData().getFrequent());
+        verify(destinationSuggestionService).getSuggestions(userId, lat, lng);
     }
 }
