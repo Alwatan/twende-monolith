@@ -7,8 +7,7 @@ import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.GenericGenerator;
-import tz.co.twende.common.entity.UlidGenerator;
+import tz.co.twende.common.entity.UlidId;
 
 @Entity
 @Table(name = "cash_declarations")
@@ -18,8 +17,7 @@ import tz.co.twende.common.entity.UlidGenerator;
 public class CashDeclaration {
 
     @Id
-    @GeneratedValue(generator = "ulid")
-    @GenericGenerator(name = "ulid", type = UlidGenerator.class)
+    @UlidId
     @Column(updatable = false, nullable = false)
     private UUID id;
 

@@ -5,7 +5,6 @@ import java.time.Instant;
 import java.util.UUID;
 import lombok.Getter;
 import lombok.Setter;
-import org.hibernate.annotations.GenericGenerator;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
@@ -17,8 +16,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 public abstract class BaseEntity {
 
     @Id
-    @GeneratedValue(generator = "ulid")
-    @GenericGenerator(name = "ulid", type = UlidGenerator.class)
+    @UlidId
     @Column(updatable = false, nullable = false)
     private UUID id;
 

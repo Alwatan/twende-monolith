@@ -303,8 +303,9 @@ It provides consistency across the platform. See `common-lib/CLAUDE.md` for full
 ### Base Entity (ULID-based primary keys)
 
 ULIDs are time-sortable, globally unique, and stored as standard UUID columns in PostgreSQL.
-The custom `UlidGenerator` produces monotonically increasing IDs for better B-tree index
-performance.
+The custom `@UlidId` annotation (backed by `UlidGenerator` implementing Hibernate's
+`BeforeExecutionGenerator`) produces monotonically increasing IDs for better B-tree index
+performance. Pre-set IDs (e.g. from Kafka events) are preserved automatically.
 
 ```java
 @MappedSuperclass
@@ -312,8 +313,7 @@ performance.
 @Getter @Setter
 public abstract class BaseEntity {
     @Id
-    @GeneratedValue(generator = "ulid")
-    @GenericGenerator(name = "ulid", type = UlidGenerator.class)
+    @UlidId
     @Column(updatable = false, nullable = false)
     private UUID id;
 

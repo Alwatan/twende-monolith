@@ -28,7 +28,8 @@ tz.co.twende.common
 │   └── CommonAutoConfiguration.java       # Spring Boot auto-config (registers GlobalExceptionHandler)
 ├── entity/
 │   ├── BaseEntity.java                    # ULID PK (stored as UUID) + audit timestamps + countryCode
-│   └── UlidGenerator.java                 # Custom Hibernate IdentifierGenerator for ULIDs
+│   ├── UlidId.java                        # @IdGeneratorType annotation for ULID generation
+│   └── UlidGenerator.java                 # BeforeExecutionGenerator for monotonic ULIDs
 ├── response/
 │   ├── ApiResponse.java                   # Standard response wrapper
 │   └── PagedResponse.java                # Paginated response wrapper
@@ -154,10 +155,11 @@ tz.co.twende.common
 ### BaseEntity (ULID-based primary keys)
 
 ULIDs are time-sortable, globally unique, and stored as standard `UUID` columns in PostgreSQL.
-The Java type remains `UUID` -- ULIDs are binary-compatible with UUID. The custom `UlidGenerator`
-produces monotonically increasing IDs for better B-tree index performance.
+The Java type remains `UUID` -- ULIDs are binary-compatible with UUID. The custom `@UlidId`
+annotation (backed by `UlidGenerator` implementing `BeforeExecutionGenerator`) produces
+monotonically increasing IDs for better B-tree index performance.
 
-**Do NOT use `GenerationType.UUID`.** Use the custom `UlidGenerator` with `@GenericGenerator`.
+**Do NOT use `GenerationType.UUID` or `@GenericGenerator`.** Use the custom `@UlidId` annotation.
 
 ```java
 @MappedSuperclass
@@ -167,8 +169,7 @@ produces monotonically increasing IDs for better B-tree index performance.
 public abstract class BaseEntity {
 
     @Id
-    @GeneratedValue(generator = "ulid")
-    @GenericGenerator(name = "ulid", type = UlidGenerator.class)
+    @UlidId
     @Column(updatable = false, nullable = false)
     private UUID id;
 
@@ -188,17 +189,40 @@ public abstract class BaseEntity {
 Each consuming service must enable JPA auditing: `@EnableJpaAuditing` on its main class or
 a config class.
 
-### UlidGenerator
+### @UlidId Annotation
+
+Custom annotation that replaces the deprecated `@GeneratedValue` + `@GenericGenerator` pattern.
+Meta-annotated with `@IdGeneratorType(UlidGenerator.class)` so Hibernate automatically uses
+our ULID generator.
 
 ```java
-import com.github.f4b6a3.ulid.UlidCreator;
-import org.hibernate.engine.spi.SharedSessionContractImplementor;
-import org.hibernate.id.IdentifierGenerator;
+@IdGeneratorType(UlidGenerator.class)
+@Retention(RetentionPolicy.RUNTIME)
+@Target({ElementType.FIELD, ElementType.METHOD})
+public @interface UlidId {}
+```
 
-public class UlidGenerator implements IdentifierGenerator {
+### UlidGenerator
+
+Implements Hibernate's `BeforeExecutionGenerator` (the modern replacement for the deprecated
+`IdentifierGenerator`). Generates monotonically increasing ULIDs via `UlidCreator`. If the
+entity already has a non-null ID (e.g. set from a Kafka event), that ID is preserved.
+
+```java
+public class UlidGenerator implements BeforeExecutionGenerator {
     @Override
-    public Object generate(SharedSessionContractImplementor session, Object object) {
+    public Object generate(SharedSessionContractImplementor session,
+                           Object owner, Object currentValue, EventType eventType) {
+        if (currentValue != null) return currentValue;
+        if (owner instanceof BaseEntity entity && entity.getId() != null) {
+            return entity.getId();
+        }
         return UlidCreator.getMonotonicUlid().toUuid();
+    }
+
+    @Override
+    public EnumSet<EventType> getEventTypes() {
+        return EventTypeSets.INSERT_ONLY;
     }
 }
 ```

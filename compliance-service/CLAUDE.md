@@ -275,8 +275,7 @@ public class TripReport extends BaseEntity {
 @Getter @Setter @NoArgsConstructor
 public class AuditLog {
     @Id
-    @GeneratedValue(generator = "ulid")
-    @GenericGenerator(name = "ulid", type = UlidGenerator.class)
+    @UlidId
     @Column(updatable = false, nullable = false)
     private UUID id;
 
