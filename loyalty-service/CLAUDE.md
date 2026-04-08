@@ -129,11 +129,15 @@ CREATE INDEX idx_offers_expiry ON free_ride_offers(status, expires_at)
 ```sql
 -- V2__seed_loyalty_rules.sql
 
+-- Thresholds and validity differ by vehicle type:
+-- Boda Boda: most frequent, short trips → 30 rides, 90km, 3km free ride, 5-day validity
+-- Bajaj: moderate frequency → 20 rides, 100km, 5km free ride, 7-day validity
+-- Economy Car: less frequent, longer trips → 12 rides, 120km, 10km free ride, 10-day validity
 INSERT INTO loyalty_rules (country_code, vehicle_type, required_rides, required_distance_km,
     free_ride_max_distance_km, offer_validity_days, is_active) VALUES
-  ('TZ', 'BAJAJ',       20,  100.00, 5.00,  30, true),
-  ('TZ', 'BODA_BODA',   25,  150.00, 5.00,  30, true),
-  ('TZ', 'ECONOMY_CAR', 15,   80.00, 10.00, 30, true);
+  ('TZ', 'BODA_BODA',   30,   90.00,  3.00,  5, true),
+  ('TZ', 'BAJAJ',       20,  100.00,  5.00,  7, true),
+  ('TZ', 'CAR_ECONOMY', 12,  120.00, 10.00, 10, true);
 ```
 
 ---

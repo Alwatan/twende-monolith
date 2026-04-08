@@ -36,7 +36,10 @@ earnings) or a **flat fee model** (Twende takes a percentage per trip).
 ### Key Differentiating Features (build these, do not simplify them away)
 
 **Rides:**
-- Driver subscription bundles (daily TSh 2,000 / weekly TSh 10,000 / monthly TSh 35,000)
+- Driver subscription bundles per vehicle type:
+  - Boda Boda: daily TSh 1,000 / weekly TSh 5,000 / monthly TSh 18,000
+  - Bajaj: daily TSh 2,000 / weekly TSh 10,000 / monthly TSh 30,000
+  - Economy Car: daily TSh 3,500 / weekly TSh 18,000 / monthly TSh 55,000
 - Flat fee alternative (e.g. 15% per trip — configurable per country)
 - Fare boost: rider can increase their offer to attract faster acceptance
 - Rejection counter: rider sees how many drivers passed on their trip

@@ -50,13 +50,15 @@ CREATE TYPE sub_status AS ENUM ('PENDING_PAYMENT','ACTIVE','EXPIRED','CANCELLED'
 CREATE TABLE subscription_plans (
     id             UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     country_code   CHAR(2)       NOT NULL,
+    vehicle_type   VARCHAR(30)   NOT NULL,  -- BODA_BODA | BAJAJ | CAR_ECONOMY
     plan_type      VARCHAR(10)   NOT NULL,  -- DAILY | WEEKLY | MONTHLY
     price          NUMERIC(10,2) NOT NULL,
     currency_code  VARCHAR(3)    NOT NULL,
     duration_hours INT           NOT NULL,  -- 24, 168, 720
     is_active      BOOLEAN       NOT NULL DEFAULT true,
     display_name   VARCHAR(100),            -- "Pakiti ya Siku"
-    created_at     TIMESTAMPTZ   NOT NULL DEFAULT now()
+    created_at     TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    UNIQUE(country_code, vehicle_type, plan_type)
 );
 
 CREATE TABLE subscriptions (
@@ -81,12 +83,30 @@ CREATE INDEX idx_sub_expires ON subscriptions(expires_at) WHERE status = 'ACTIVE
 
 Migration file: `V2__seed_tanzania_plans.sql`
 
+Plans are per vehicle type. Different vehicles have different earning potential,
+so bundle prices reflect this.
+
 ```sql
-INSERT INTO subscription_plans (id, country_code, plan_type, price, currency_code, duration_hours, display_name)
+-- Boda Boda plans (lowest earning, cheapest bundles)
+INSERT INTO subscription_plans (id, country_code, vehicle_type, plan_type, price, currency_code, duration_hours, display_name)
 VALUES
-  (gen_random_uuid(), 'TZ', 'DAILY',   2000,  'TZS', 24,  'Pakiti ya Siku'),
-  (gen_random_uuid(), 'TZ', 'WEEKLY',  10000, 'TZS', 168, 'Pakiti ya Wiki'),
-  (gen_random_uuid(), 'TZ', 'MONTHLY', 35000, 'TZS', 720, 'Pakiti ya Mwezi');
+  (gen_random_uuid(), 'TZ', 'BODA_BODA', 'DAILY',    1000, 'TZS', 24,  'Boda - Pakiti ya Siku'),
+  (gen_random_uuid(), 'TZ', 'BODA_BODA', 'WEEKLY',   5000, 'TZS', 168, 'Boda - Pakiti ya Wiki'),
+  (gen_random_uuid(), 'TZ', 'BODA_BODA', 'MONTHLY', 18000, 'TZS', 720, 'Boda - Pakiti ya Mwezi');
+
+-- Bajaj plans (mid-tier earning)
+INSERT INTO subscription_plans (id, country_code, vehicle_type, plan_type, price, currency_code, duration_hours, display_name)
+VALUES
+  (gen_random_uuid(), 'TZ', 'BAJAJ', 'DAILY',    2000,  'TZS', 24,  'Bajaj - Pakiti ya Siku'),
+  (gen_random_uuid(), 'TZ', 'BAJAJ', 'WEEKLY',  10000,  'TZS', 168, 'Bajaj - Pakiti ya Wiki'),
+  (gen_random_uuid(), 'TZ', 'BAJAJ', 'MONTHLY', 30000,  'TZS', 720, 'Bajaj - Pakiti ya Mwezi');
+
+-- Economy Car plans (highest earning, premium bundles)
+INSERT INTO subscription_plans (id, country_code, vehicle_type, plan_type, price, currency_code, duration_hours, display_name)
+VALUES
+  (gen_random_uuid(), 'TZ', 'CAR_ECONOMY', 'DAILY',    3500,  'TZS', 24,  'Gari - Pakiti ya Siku'),
+  (gen_random_uuid(), 'TZ', 'CAR_ECONOMY', 'WEEKLY',  18000,  'TZS', 168, 'Gari - Pakiti ya Wiki'),
+  (gen_random_uuid(), 'TZ', 'CAR_ECONOMY', 'MONTHLY', 55000,  'TZS', 720, 'Gari - Pakiti ya Mwezi');
 ```
 
 ---
@@ -237,8 +257,10 @@ twende:
 3. **One active subscription at a time** -- a driver cannot purchase a new subscription
    while they have an active one. Validate this before creating a new subscription record.
 
-4. **Tanzania plans are fixed** -- DAILY TSh 2,000 (24h), WEEKLY TSh 10,000 (168h),
-   MONTHLY TSh 35,000 (720h). Plans are seeded via migration and managed by admins only.
+4. **Tanzania plans are per vehicle type** -- Boda Boda (daily TSh 1,000 / weekly
+   TSh 5,000 / monthly TSh 18,000), Bajaj (daily TSh 2,000 / weekly TSh 10,000 /
+   monthly TSh 30,000), Economy Car (daily TSh 3,500 / weekly TSh 18,000 / monthly
+   TSh 55,000). Plans are seeded via migration and managed by admins only.
 
 5. **Expiry is checked every 10 minutes** -- the scheduler runs at a fixed delay.
    Between scheduler runs, `hasActiveSubscription()` checks `expires_at > now()` in
@@ -338,9 +360,9 @@ void givenActiveSubscriptionPastExpiry_whenSchedulerRuns_thenMarkedExpiredAndEve
 ## Implementation Steps
 
 - [ ] 1. `application.yml` -- port 8090, datasource `twende_subscriptions`, Redis, Kafka (`consumer.group-id: twende-subscription`), payment-service URL (`http://localhost:8089`)
-- [ ] 2. Entities: `SubscriptionPlan` (countryCode, planType, price, currencyCode, durationHours, displayName, isActive), `Subscription` (driverId, planId, status, paymentMethod, amountPaid, startedAt, expiresAt, paymentRef)
+- [ ] 2. Entities: `SubscriptionPlan` (countryCode, vehicleType, planType, price, currencyCode, durationHours, displayName, isActive), `Subscription` (driverId, planId, status, paymentMethod, amountPaid, startedAt, expiresAt, paymentRef)
 - [ ] 3. Repositories: `SubscriptionPlanRepository`, `SubscriptionRepository` -- include `existsByDriverIdAndStatusAndExpiresAtAfter`, `findByStatusAndExpiresAtBefore`
-- [ ] 4. `SubscriptionService`: `getPlans(countryCode)`, `purchase(driverId, planId, paymentMethod)` -- validate plan exists + active + correct country, check no active subscription, create record as `PENDING_PAYMENT`, call payment-service `POST /internal/payments/subscription` via RestClient, on success set `ACTIVE` + timestamps, on failure set `CANCELLED`; `hasActiveSubscription(driverId)` -- boolean check
+- [ ] 4. `SubscriptionService`: `getPlans(countryCode, vehicleType)`, `purchase(driverId, planId, paymentMethod)` -- validate plan exists + active + correct country, check no active subscription, create record as `PENDING_PAYMENT`, call payment-service `POST /internal/payments/subscription` via RestClient, on success set `ACTIVE` + timestamps, on failure set `CANCELLED`; `hasActiveSubscription(driverId)` -- boolean check
 - [ ] 5. `ExpiryScheduler`: `@Scheduled(fixedDelay = 600_000)`, find `ACTIVE` subscriptions with `expiresAt < now()`, mark `EXPIRED`, publish Kafka event for each
 - [ ] 6. Kafka producers: `twende.subscriptions.activated` (on successful purchase), `twende.subscriptions.expired` (on expiry)
 - [ ] 7. `SubscriptionController` (driver-facing: GET plans, GET current, POST purchase, GET history) + internal endpoint `GET /internal/subscriptions/{driverId}/active` returning `ApiResponse<Boolean>`
