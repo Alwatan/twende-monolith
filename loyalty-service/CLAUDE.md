@@ -79,7 +79,7 @@ Schema managed by Flyway. Migrations in `src/main/resources/db/migration/`.
 CREATE TABLE loyalty_rules (
     id                      UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     country_code            CHAR(2)       NOT NULL,
-    vehicle_type            VARCHAR(30)   NOT NULL,  -- BAJAJ, BODA_BODA, ECONOMY_CAR
+    vehicle_type            VARCHAR(30)   NOT NULL,  -- BAJAJ, BODA_BODA, CAR_ECONOMY
     required_rides          INT           NOT NULL,
     required_distance_km    NUMERIC(10,2) NOT NULL,
     free_ride_max_distance_km NUMERIC(10,2) NOT NULL,
@@ -151,7 +151,7 @@ Admin-configurable per country + vehicle type. Defines the threshold to earn a f
 | Field | Type | Description |
 |---|---|---|
 | countryCode | CHAR(2) | Country this rule applies to |
-| vehicleType | VARCHAR(30) | Vehicle type (BAJAJ, BODA_BODA, ECONOMY_CAR) |
+| vehicleType | VARCHAR(30) | Vehicle type (BAJAJ, BODA_BODA, CAR_ECONOMY) |
 | requiredRides | INT | Number of rides needed to earn free ride |
 | requiredDistanceKm | NUMERIC(10,2) | Minimum total distance (km) needed |
 | freeRideMaxDistanceKm | NUMERIC(10,2) | Maximum distance allowed for the free ride |
@@ -566,7 +566,7 @@ void givenOfferWith5KmMax_whenRideIs8Km_thenOfferNotApplicable() { ... }
 - [ ] 6. Kafka producer: `LoyaltyEventPublisher` publishing `FreeRideOfferEarnedEvent` to `twende.loyalty.free-ride-earned`
 - [ ] 7. `OfferExpiryScheduler`: `@Scheduled(fixedDelay = 3_600_000)`, find AVAILABLE offers past `expiresAt`, mark EXPIRED
 - [ ] 8. `LoyaltyController` (rider-facing: GET `/progress`, GET `/offers`, GET `/rules`) + admin PUT `/rules/{id}` + `LoyaltyInternalController` (GET `/internal/loyalty/offers/applicable`, POST `/internal/loyalty/offers/{id}/redeem`)
-- [ ] 9. Flyway migrations: `V1__create_loyalty_schema.sql` (tables + indexes), `V2__seed_loyalty_rules.sql` (Tanzania rules for BAJAJ, BODA_BODA, ECONOMY_CAR)
+- [ ] 9. Flyway migrations: `V1__create_loyalty_schema.sql` (tables + indexes), `V2__seed_loyalty_rules.sql` (Tanzania rules: BODA_BODA 30 rides/90km/3km/5d, BAJAJ 20 rides/100km/5km/7d, CAR_ECONOMY 12 rides/120km/10km/10d)
 - [ ] 10. MapStruct mapper: `LoyaltyMapper` for entity-to-DTO conversions
 - [ ] 11. Dockerfile — Multi-stage build (eclipse-temurin:21-jdk-alpine for build, 21-jre-alpine for run). Non-root `twende` user. Health check on `/actuator/health`. Expose port 8095.
 - [ ] 12. OpenAPI config — `OpenApiConfig.java` with SpringDoc `OpenAPI` bean. Title: "Loyalty Service API". Swagger UI at `/swagger-ui.html`.

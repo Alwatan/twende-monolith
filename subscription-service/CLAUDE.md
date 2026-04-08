@@ -27,7 +27,7 @@ endpoint for driver-service to check eligibility.
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/v1/subscriptions/plans` | Available plans for driver's country |
+| `GET` | `/api/v1/subscriptions/plans?vehicleType={type}` | Available plans for driver's country + vehicle type |
 | `GET` | `/api/v1/subscriptions/me` | Driver's current active subscription |
 | `POST` | `/api/v1/subscriptions/purchase` | Purchase a bundle |
 | `GET` | `/api/v1/subscriptions/me/history` | Past subscriptions |
@@ -361,12 +361,12 @@ void givenActiveSubscriptionPastExpiry_whenSchedulerRuns_thenMarkedExpiredAndEve
 
 - [ ] 1. `application.yml` -- port 8090, datasource `twende_subscriptions`, Redis, Kafka (`consumer.group-id: twende-subscription`), payment-service URL (`http://localhost:8089`)
 - [ ] 2. Entities: `SubscriptionPlan` (countryCode, vehicleType, planType, price, currencyCode, durationHours, displayName, isActive), `Subscription` (driverId, planId, status, paymentMethod, amountPaid, startedAt, expiresAt, paymentRef)
-- [ ] 3. Repositories: `SubscriptionPlanRepository`, `SubscriptionRepository` -- include `existsByDriverIdAndStatusAndExpiresAtAfter`, `findByStatusAndExpiresAtBefore`
+- [ ] 3. Repositories: `SubscriptionPlanRepository` (include `findByCountryCodeAndVehicleTypeAndIsActiveTrue`), `SubscriptionRepository` -- include `existsByDriverIdAndStatusAndExpiresAtAfter`, `findByStatusAndExpiresAtBefore`
 - [ ] 4. `SubscriptionService`: `getPlans(countryCode, vehicleType)`, `purchase(driverId, planId, paymentMethod)` -- validate plan exists + active + correct country, check no active subscription, create record as `PENDING_PAYMENT`, call payment-service `POST /internal/payments/subscription` via RestClient, on success set `ACTIVE` + timestamps, on failure set `CANCELLED`; `hasActiveSubscription(driverId)` -- boolean check
 - [ ] 5. `ExpiryScheduler`: `@Scheduled(fixedDelay = 600_000)`, find `ACTIVE` subscriptions with `expiresAt < now()`, mark `EXPIRED`, publish Kafka event for each
 - [ ] 6. Kafka producers: `twende.subscriptions.activated` (on successful purchase), `twende.subscriptions.expired` (on expiry)
-- [ ] 7. `SubscriptionController` (driver-facing: GET plans, GET current, POST purchase, GET history) + internal endpoint `GET /internal/subscriptions/{driverId}/active` returning `ApiResponse<Boolean>`
-- [ ] 8. Flyway migrations: `V1__create_subscription_schema.sql` (tables + indexes), `V2__seed_tanzania_plans.sql` (daily/weekly/monthly plans)
+- [ ] 7. `SubscriptionController` (driver-facing: GET plans?vehicleType=, GET current, POST purchase, GET history) + internal endpoint `GET /internal/subscriptions/{driverId}/active` returning `ApiResponse<Boolean>`
+- [ ] 8. Flyway migrations: `V1__create_subscription_schema.sql` (tables + indexes + vehicle_type column with unique constraint), `V2__seed_tanzania_plans.sql` (9 plans: 3 vehicle types x 3 durations)
 - [ ] 9. Dockerfile — Multi-stage build (eclipse-temurin:21-jdk-alpine for build, 21-jre-alpine for run). Non-root `twende` user. Health check on `/actuator/health`. Expose port 8090.
 - [ ] 10. OpenAPI config — `OpenApiConfig.java` with SpringDoc `OpenAPI` bean. Title: "Subscription Service API". Swagger UI at `/swagger-ui.html`.
 - [ ] 11. Unit tests + integration tests (Testcontainers for PostgreSQL and Kafka; WireMock for payment-service), verify >= 80% coverage with `./mvnw verify`

@@ -113,7 +113,7 @@ CREATE TABLE drivers (
 CREATE TABLE driver_vehicles (
     id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     driver_id       UUID         NOT NULL REFERENCES drivers(id),
-    vehicle_type    VARCHAR(30)  NOT NULL,     -- VehicleType enum: BAJAJ, BODA_BODA, ECONOMY_CAR
+    vehicle_type    VARCHAR(30)  NOT NULL,     -- VehicleType enum: BAJAJ, BODA_BODA, CAR_ECONOMY
     make            VARCHAR(50),               -- "Bajaj", "Honda"
     model           VARCHAR(50),
     year            INT,

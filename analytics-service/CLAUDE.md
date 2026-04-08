@@ -64,7 +64,7 @@ GET /api/v1/analytics/driver/trips?from=2026-04-01&to=2026-04-07
     "averageRating": 4.7,
     "byVehicleType": {
       "BAJAJ": { "trips": 25, "earned": 50000 },
-      "ECONOMY_CAR": { "trips": 17, "earned": 35000 }
+      "CAR_ECONOMY": { "trips": 17, "earned": 35000 }
     }
   }
 }
