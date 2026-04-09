@@ -22,7 +22,8 @@ CREATE TABLE trip_reports (
     submitted_at     TIMESTAMPTZ,
     submission_ref   VARCHAR(200),
     submission_error TEXT,
-    created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_trip_reports_pending ON trip_reports(country_code, submitted, created_at)

@@ -848,12 +848,12 @@ to build each service, refer to the **"Implementation Steps"** section in that s
 - [x] `notification-service` — see `notification-service/CLAUDE.md` → Implementation Steps
 - [x] `rating-service` — see `rating-service/CLAUDE.md` → Implementation Steps
 
-### Phase 6 — Admin & Observability
-- [ ] `analytics-service` — see `analytics-service/CLAUDE.md` → Implementation Steps
-- [ ] `compliance-service` — see `compliance-service/CLAUDE.md` → Implementation Steps
-- [ ] Admin endpoints across all services (`X-User-Role == ADMIN` check)
-- [ ] Prometheus metrics exposed at `/actuator/prometheus`
-- [ ] Zipkin tracing configured
+### Phase 6 — Admin & Observability ✅
+- [x] `analytics-service` — see `analytics-service/CLAUDE.md` → Implementation Steps
+- [x] `compliance-service` — see `compliance-service/CLAUDE.md` → Implementation Steps
+- [x] Admin endpoints across all services (`X-User-Role == ADMIN` check)
+- [x] Prometheus metrics exposed at `/actuator/prometheus`
+- [x] Zipkin tracing configured
 
 ### Phase 7 — Flat Fee Revenue Model ✅
 - [x] `common-lib` — add enums: `ServiceCategory` (RIDE, CHARTER, CARGO), `RevenueModel`

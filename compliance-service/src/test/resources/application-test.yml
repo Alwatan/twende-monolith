@@ -1,0 +1,25 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+  flyway:
+    enabled: false
+  kafka:
+    bootstrap-servers: localhost:9092
+  main:
+    allow-bean-definition-overriding: true
+
+twende:
+  compliance:
+    sumatra:
+      base-url: http://localhost:19999
+      api-key: test-key
+      enabled: false
+    ntsa:
+      base-url: http://localhost:19999
+      api-key: test-key
+      enabled: false
+    kcca:
+      base-url: http://localhost:19999
+      api-key: test-key
+      enabled: false

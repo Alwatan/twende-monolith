@@ -5,10 +5,11 @@ CREATE TABLE analytics_events (
     id           UUID        PRIMARY KEY,
     country_code CHAR(2)     NOT NULL,
     event_type   VARCHAR(100) NOT NULL,
-    entity_id    UUID,
     actor_id     UUID,
     payload      JSONB,
-    occurred_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    occurred_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_events_type    ON analytics_events(event_type, occurred_at DESC);
@@ -24,6 +25,7 @@ CREATE TABLE driver_daily_summaries (
     trip_count   INT           NOT NULL DEFAULT 0,
     online_hours NUMERIC(5,2)  NOT NULL DEFAULT 0,
     created_at   TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ   NOT NULL DEFAULT now(),
     UNIQUE(driver_id, date)
 );
 

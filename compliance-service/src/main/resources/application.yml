@@ -1,0 +1,64 @@
+server:
+  port: 8094
+
+spring:
+  application:
+    name: twende-compliance
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:5432/twende_compliance
+    username: ${DB_USER:twende}
+    password: ${DB_PASSWORD:twende}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 3
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.dialect: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: 6379
+      password: ${REDIS_PASSWORD:}
+  kafka:
+    bootstrap-servers: ${KAFKA_SERVERS:localhost:9092}
+    consumer:
+      group-id: twende-compliance
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: tz.co.twende.*
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  tracing:
+    sampling:
+      probability: 1.0
+
+twende:
+  compliance:
+    sumatra:
+      base-url: ${SUMATRA_API_URL:https://api.sumatra.go.tz}
+      api-key: ${SUMATRA_API_KEY:}
+      enabled: ${SUMATRA_ENABLED:false}
+    ntsa:
+      base-url: ${NTSA_API_URL:}
+      api-key: ${NTSA_API_KEY:}
+      enabled: ${NTSA_ENABLED:false}
+    kcca:
+      base-url: ${KCCA_API_URL:}
+      api-key: ${KCCA_API_KEY:}
+      enabled: ${KCCA_ENABLED:false}
+
+logging:
+  level:
+    tz.co.twende: DEBUG
+    org.springframework.kafka: WARN
