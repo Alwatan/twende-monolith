@@ -55,6 +55,8 @@
         <resilience4j.version>2.2.0</resilience4j.version>
         <spotless.version>2.43.0</spotless.version>
         <jacoco.version>0.8.12</jacoco.version>
+        <!-- Override Jackson 3.1.0 → 3.1.1 to fix GHSA-2m67-wjpj-xhg9 -->
+        <jackson-bom.version>3.1.1</jackson-bom.version>
     </properties>
 
     <dependencyManagement>
